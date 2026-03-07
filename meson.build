@@ -328,6 +328,17 @@ conf.set('UPDATE_HELPER_USER_TIMEOUT_SEC',                    get_option('update
 conf.set10('ENABLE_FIRST_BOOT_FULL_PRESET',                   get_option('first-boot-full-preset'))
 
 #####################################################################
+# Portable Service Manager (cross-platform - Linux and macOS)
+# Automatically built on Darwin; opt-in on Linux with -Dportable-manager=true.
+# On Darwin, subdir_done() exits this file so no Linux-specific code is compiled.
+if get_option('portable-manager') or host_machine.system() == 'darwin'
+        subdir('src/portable-mgr')
+        if host_machine.system() == 'darwin'
+                subdir_done()
+        endif
+endif
+
+#####################################################################
 
 cc = meson.get_compiler('c')
 userspace_c_args = []

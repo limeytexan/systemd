@@ -1,6 +1,9 @@
 # -*- mode: meson -*-
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
+option('portable-manager', type : 'boolean', value : false,
+       description : 'Build the portable service manager (systemd-compatible, works on Linux and macOS; automatically enabled on Darwin)')
+
 option('version-tag', type : 'string',
        description : 'set the extended version string (defaults to project version)')
 option('shared-lib-tag', type : 'string',

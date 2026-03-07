@@ -16,6 +16,9 @@ version = 1
 ## -------------------------------------------------------------------
 [install]
 claude-code.pkg-path = "claude-code"
+meson.pkg-path = "meson"
+ninja.pkg-path = "ninja"
+gcc.pkg-path = "gcc"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 
