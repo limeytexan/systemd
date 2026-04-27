@@ -137,11 +137,11 @@ static int call_daemon(const char *request, char *response, size_t resp_sz) {
         int r = ipc_client_call(sock, request, response, resp_sz);
         if (r < 0) {
                 if (r == -ENOENT || r == -ECONNREFUSED) {
-                        fprintf(stderr, "Failed to connect to systemd manager: %s\n"
-                                "Is the service manager running? Start with: systemd --user\n",
-                                strerror(-r));
+                        fprintf(stderr, "Failed to connect to psm service manager at %s: %s\n"
+                                "Is it running? Start it with: systemd\n",
+                                sock, strerror(-r));
                 } else {
-                        fprintf(stderr, "Communication error: %s\n", strerror(-r));
+                        fprintf(stderr, "psm communication error: %s\n", strerror(-r));
                 }
         }
         return r;

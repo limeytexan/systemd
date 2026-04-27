@@ -23,7 +23,7 @@ struct Journal {
 char *journal_dir(void) {
         _cleanup_free_ char *runtime = psm_runtime_dir();
         char buf[4096];
-        snprintf(buf, sizeof(buf), "%s/systemd/journal", runtime);
+        snprintf(buf, sizeof(buf), "%s/psm/journal", runtime);
         return strdup(buf);
 }
 
