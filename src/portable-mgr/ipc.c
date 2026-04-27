@@ -174,6 +174,11 @@ static void dispatch_request(Manager *mgr, const char *req_line,
                 size_t n = strlen(resp);
                 if (n + 2 < resp_sz && resp[n-1] != '\n') { resp[n] = '\n'; resp[n+1] = '\0'; }
 
+        } else if (streq(method, "ListUnitFiles")) {
+                manager_list_unit_files_json(mgr, resp, resp_sz);
+                size_t n = strlen(resp);
+                if (n + 2 < resp_sz && resp[n-1] != '\n') { resp[n] = '\n'; resp[n+1] = '\0'; }
+
         } else if (streq(method, "EnableUnit")) {
                 const char *name = ipc_msg_get(&msg, "name");
                 if (!name) { ipc_build_error(resp, resp_sz, "MissingParam", "Missing 'name'"); return; }

@@ -92,3 +92,5 @@ Unit *manager_find_unit(Manager *m, const char *name);
 int  manager_unit_status_json(Manager *m, const char *name, char *buf, size_t sz);
 /* Build a JSON list of all units */
 int  manager_list_units_json(Manager *m, char *buf, size_t sz);
+/* Build a JSON list of all unit files in the search path */
+int  manager_list_unit_files_json(Manager *m, char *buf, size_t sz);

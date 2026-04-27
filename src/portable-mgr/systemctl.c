@@ -22,6 +22,7 @@
  *   --version            Print version
  */
 
+#include <fnmatch.h>
 #include <getopt.h>
 #include <time.h>
 #include "ipc.h"
@@ -48,6 +49,7 @@ static bool unit_name_has_suffix(const char *name) {
         }
         return false;
 }
+
 
 /* ---- Formatting helpers ---- */
 
@@ -483,6 +485,54 @@ static int cmd_is_enabled(int argc, char *argv[]) {
         return 0;
 }
 
+static int cmd_list_unit_files(int argc, char *argv[]) {
+        (void)argc; (void)argv;
+        char resp[65536];
+        if (call_daemon("{\"method\":\"ListUnitFiles\"}", resp, sizeof(resp)) < 0) return 1;
+
+        if (opt_json) { printf("%s\n", resp); return 0; }
+
+        printf("  %-44s %s\n", "UNIT FILE", "STATE");
+
+        int count = 0;
+        const char *p = strstr(resp, "\"unit_files\":[");
+        if (p) {
+                p += strlen("\"unit_files\":[");
+                while (*p && *p != ']') {
+                        if (*p != '{') { p++; continue; }
+                        int depth = 0;
+                        const char *start = p;
+                        while (*p) {
+                                if (*p == '{') depth++;
+                                else if (*p == '}') { depth--; if (!depth) { p++; break; } }
+                                p++;
+                        }
+                        char obj[512];
+                        size_t olen = (size_t)(p - start);
+                        if (olen >= sizeof(obj)) olen = sizeof(obj) - 1;
+                        memcpy(obj, start, olen);
+                        obj[olen] = '\0';
+
+                        _cleanup_free_ char *name  = json_get_str(obj, "name");
+                        _cleanup_free_ char *state = json_get_str(obj, "state");
+
+                        if (!name) continue;
+
+                        bool enabled = state && streq(state, "enabled");
+                        if (isatty(STDOUT_FILENO))
+                                printf("  %-44s %s%s\033[0m\n", name,
+                                        enabled ? COLOR_GREEN : "",
+                                        state ? state : "?");
+                        else
+                                printf("  %-44s %s\n", name, state ? state : "?");
+                        count++;
+                }
+        }
+
+        printf("\n%d unit files listed.\n", count);
+        return 0;
+}
+
 static int cmd_list_units(int argc, char *argv[]) {
         (void)argv;
         char resp[65536];
@@ -586,6 +636,67 @@ static int cmd_cat(int argc, char *argv[]) {
         return 0;
 }
 
+static bool name_is_glob(const char *s) {
+        return strcspn(s, "*?[") < strlen(s);
+}
+
+/* /dev/sda → dev-sda.device, /home/user → home-user.mount */
+static char *unit_name_from_path(const char *path) {
+        const char *p = path;
+        while (*p == '/') p++;
+        const char *suffix = (strprefix(path, "/dev/") || strprefix(path, "/sys/"))
+                ? ".device" : ".mount";
+        size_t plen = strlen(p);
+        char *name = malloc(plen + strlen(suffix) + 1);
+        if (!name) return NULL;
+        size_t i = 0;
+        for (const char *c = p; *c; c++)
+                name[i++] = (*c == '/') ? '-' : *c;
+        strcpy(name + i, suffix);
+        return name;
+}
+
+/* Expand a glob pattern against loaded units; returns heap-allocated NULL-terminated list */
+static char **glob_expand_units(const char *pattern) {
+        char resp[65536];
+        if (call_daemon("{\"method\":\"ListUnits\"}", resp, sizeof(resp)) < 0)
+                return NULL;
+
+        char **result = NULL;
+        int n = 0;
+
+        const char *p = strstr(resp, "\"units\":[");
+        if (!p) return NULL;
+        p += strlen("\"units\":[");
+
+        while (*p && *p != ']') {
+                if (*p != '{') { p++; continue; }
+                int depth = 0;
+                const char *start = p;
+                while (*p) {
+                        if (*p == '{') depth++;
+                        else if (*p == '}') { depth--; if (!depth) { p++; break; } }
+                        p++;
+                }
+                char obj[512];
+                size_t olen = (size_t)(p - start);
+                if (olen >= sizeof(obj)) continue;
+                memcpy(obj, start, olen);
+                obj[olen] = '\0';
+
+                _cleanup_free_ char *name = json_get_str(obj, "name");
+                if (!name) continue;
+                if (fnmatch(pattern, name, 0) != 0) continue;
+
+                char **nr = realloc(result, (size_t)(n + 2) * sizeof(char*));
+                if (!nr) break;
+                result = nr;
+                result[n++] = strdup(name);
+                result[n]   = NULL;
+        }
+        return result;
+}
+
 static void print_usage(const char *argv0) {
         printf(
 "Usage: %s [OPTIONS] COMMAND [UNIT...]\n"
@@ -606,6 +717,7 @@ static void print_usage(const char *argv0) {
 "  enable UNIT...         Enable unit(s)\n"
 "  disable UNIT...        Disable unit(s)\n"
 "  list-units [PATTERN]   List loaded units\n"
+"  list-unit-files        List unit files in search path\n"
 "  daemon-reload          Reload service manager configuration\n"
 "\n"
 "Options:\n"
@@ -675,16 +787,66 @@ int main(int argc, char *argv[]) {
         int cmd_argc    = rem_argc - 1;
         char **cmd_argv = rem_argv + 1;
 
-        /* Append .service to bare unit names, matching stock systemctl behavior */
-        if (!streq(cmd, "daemon-reload") && !streq(cmd, "list-units")) {
-                for (int i = 0; i < cmd_argc; i++) {
-                        if (!unit_name_has_suffix(cmd_argv[i])) {
-                                char *m = malloc(strlen(cmd_argv[i]) + sizeof(".service"));
-                                if (m) {
-                                        sprintf(m, "%s.service", cmd_argv[i]);
-                                        argv[optind + 1 + i] = m;
+        /* Normalize and expand unit name arguments, matching upstream systemctl behavior:
+         *   - absolute paths  → unit name via path escaping (/dev/sda → dev-sda.device)
+         *   - glob patterns   → expand to matching loaded units
+         *   - bare names      → append .service
+         * Skip for commands that don't take unit names. */
+        if (!streq(cmd, "daemon-reload") &&
+            !streq(cmd, "list-units") &&
+            !streq(cmd, "list-unit-files") &&
+            cmd_argc > 0) {
+
+                /* Build a new expanded argv on the heap (leaked on exit — CLI is fine) */
+                char **expanded = malloc((size_t)(cmd_argc + 1) * sizeof(char*));
+                int n_expanded = 0;
+
+                for (int i = 0; expanded && i < cmd_argc; i++) {
+                        const char *arg = cmd_argv[i];
+
+                        if (arg[0] == '/') {
+                                /* Absolute path: convert to unit name */
+                                char *u = unit_name_from_path(arg);
+                                expanded[n_expanded++] = u ? u : strdup(arg);
+
+                        } else if (name_is_glob(arg)) {
+                                /* Glob: expand against loaded units */
+                                char mangled[512];
+                                /* Mangle but preserve glob chars — append .service if no suffix */
+                                const char *pat = arg;
+                                if (!unit_name_has_suffix(arg)) {
+                                        snprintf(mangled, sizeof(mangled), "%s.service", arg);
+                                        pat = mangled;
                                 }
+                                char **matches = glob_expand_units(pat);
+                                if (matches) {
+                                        for (int j = 0; matches[j]; j++) {
+                                                char **nr = realloc(expanded,
+                                                        (size_t)(n_expanded + cmd_argc - i + 2) * sizeof(char*));
+                                                if (nr) { expanded = nr; expanded[n_expanded++] = matches[j]; }
+                                        }
+                                        /* matches[j] strings are owned by expanded now */
+                                        free(matches);
+                                } else {
+                                        /* No matches: pass through so error is visible */
+                                        expanded[n_expanded++] = strdup(arg);
+                                }
+
+                        } else if (!unit_name_has_suffix(arg)) {
+                                /* Bare name: append .service */
+                                char *m = malloc(strlen(arg) + sizeof(".service"));
+                                if (m) sprintf(m, "%s.service", arg);
+                                expanded[n_expanded++] = m ? m : strdup(arg);
+
+                        } else {
+                                expanded[n_expanded++] = strdup(arg);
                         }
+                }
+
+                if (expanded) {
+                        expanded[n_expanded] = NULL;
+                        cmd_argv = expanded;
+                        cmd_argc = n_expanded;
                 }
         }
 
@@ -700,7 +862,8 @@ int main(int argc, char *argv[]) {
         if (streq(cmd, "is-active"))      return cmd_is_active(cmd_argc, cmd_argv);
         if (streq(cmd, "is-failed"))      return cmd_is_failed(cmd_argc, cmd_argv);
         if (streq(cmd, "is-enabled"))     return cmd_is_enabled(cmd_argc, cmd_argv);
-        if (streq(cmd, "list-units"))     return cmd_list_units(cmd_argc, cmd_argv);
+        if (streq(cmd, "list-units"))      return cmd_list_units(cmd_argc, cmd_argv);
+        if (streq(cmd, "list-unit-files")) return cmd_list_unit_files(cmd_argc, cmd_argv);
         if (streq(cmd, "daemon-reload"))  return cmd_daemon_reload();
 
         /* Aliases for compatibility */

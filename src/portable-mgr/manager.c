@@ -1097,6 +1097,63 @@ int manager_list_units_json(Manager *m, char *buf, size_t sz) {
         return 0;
 }
 
+int manager_list_unit_files_json(Manager *m, char *buf, size_t sz) {
+        char *paths = strdup(m->unit_search_path);
+        if (!paths) return -ENOMEM;
+
+        /* Track seen names to deduplicate across search path dirs */
+        char **seen = NULL;
+        int n_seen = 0;
+
+        size_t pos = 0;
+        pos += (size_t)snprintf(buf + pos, sz - pos, "{\"ok\":true,\"unit_files\":[");
+        bool first = true;
+
+        char *saveptr = NULL;
+        for (char *dir = strtok_r(paths, ":", &saveptr); dir; dir = strtok_r(NULL, ":", &saveptr)) {
+                DIR *d = opendir(dir);
+                if (!d) continue;
+
+                struct dirent *de;
+                while ((de = readdir(d)) && pos + 512 < sz) {
+                        if (de->d_name[0] == '.') continue;
+                        if (unit_type_from_name(de->d_name) == _UNIT_TYPE_INVALID) continue;
+
+                        /* Skip duplicates — first path entry wins */
+                        bool dup = false;
+                        for (int i = 0; i < n_seen; i++)
+                                if (streq(seen[i], de->d_name)) { dup = true; break; }
+                        if (dup) continue;
+
+                        char **ns = realloc(seen, (size_t)(n_seen + 1) * sizeof(char*));
+                        if (ns) { seen = ns; seen[n_seen++] = strdup(de->d_name); }
+
+                        char path[4096];
+                        snprintf(path, sizeof(path), "%s/%s", dir, de->d_name);
+
+                        const char *state = manager_unit_is_enabled(m, de->d_name)
+                                ? "enabled" : "disabled";
+
+                        pos += (size_t)snprintf(buf + pos, sz - pos,
+                                "%s{\"name\":\"%s\",\"path\":\"%s\",\"state\":\"%s\"}",
+                                first ? "" : ",", de->d_name, path, state);
+                        first = false;
+                }
+                closedir(d);
+        }
+
+        if (pos + 3 < sz) {
+                buf[pos++] = ']';
+                buf[pos++] = '}';
+                buf[pos]   = '\0';
+        }
+
+        for (int i = 0; i < n_seen; i++) free(seen[i]);
+        free(seen);
+        free(paths);
+        return 0;
+}
+
 /* ---- Signals ---- */
 
 static void on_sigterm(EventLoop *el, int signo, void *userdata) {
