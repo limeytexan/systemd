@@ -78,10 +78,7 @@ int manager_new(Manager **ret) {
         snprintf(paths, sizeof(paths),
                 "%s/systemd/user:"
                 "%s/systemd/user:"
-                "%s/systemd/user:"
-                "/etc/systemd/user:"
-                "/usr/local/lib/systemd/user:"
-                "/usr/lib/systemd/user",
+                "%s/systemd/user",
                 config, data, runtime);
         m->unit_search_path = strdup(paths);
 
