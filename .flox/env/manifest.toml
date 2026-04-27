@@ -1,12 +1,4 @@
-## Flox Environment Manifest -----------------------------------------
-##
-##   _Everything_ you need to know about the _manifest_ is here:
-##
-##   https://flox.dev/docs/reference/command-reference/manifest.toml/
-##
-## -------------------------------------------------------------------
-# Flox manifest version managed by Flox CLI
-version = 1
+schema-version = "1.10.0"
 
 
 ## Install Packages --------------------------------------------------
@@ -19,6 +11,9 @@ claude-code.pkg-path = "claude-code"
 meson.pkg-path = "meson"
 ninja.pkg-path = "ninja"
 gcc.pkg-path = "gcc"
+cctools.pkg-path = "cctools"
+cctools.priority = 6
+cctools.systems = [ "x86_64-darwin", "aarch64-darwin" ]
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 
@@ -83,15 +78,18 @@ gcc.pkg-path = "gcc"
 ##  $ flox build
 ##  $ flox publish
 ## ------------------------------------------------------------------
-[build]
-# [build.myproject]
-# description = "The coolest project ever"
-# version = "0.0.1"
-# command = """
-#   mkdir -p $out/bin
-#   cargo build --release
-#   cp target/release/myproject $out/bin/myproject
-# """
+[build.systemd-portable]
+description = "Portable adaptation of systemd for orchestrating services in user space"
+version = "v260-rc2-81"
+# sandbox = "pure"
+command = """
+  # Configure (once, or reconfigure if already set up)
+  # meson setup build-darwin --prefix=$out
+  meson setup --reconfigure build-darwin --prefix=$out || true
+
+  # Build + install
+  ninja -C build-darwin install
+"""
 
 
 ## Other Environment Options -----------------------------------------
