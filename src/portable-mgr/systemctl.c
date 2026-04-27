@@ -31,8 +31,13 @@
 static bool opt_quiet    = false;
 static bool opt_no_pager = false;
 static bool opt_json     = false;
+static bool opt_no_block = false;
 static int  opt_lines    = 10; /* for status: number of journal lines */
 static const char *opt_host = NULL;
+
+/* -p / --property filters for cmd_show */
+static char  *opt_properties[64];
+static int    opt_n_properties = 0;
 
 /* Return true if name already has a known unit type suffix */
 static bool unit_name_has_suffix(const char *name) {
@@ -187,6 +192,35 @@ static bool check_response(const char *resp, const char *unit) {
         return true;
 }
 
+/* ---- Synchronous wait ---- */
+
+/* Poll GetUnitStatus until the unit reaches a terminal state or timeout.
+ * for_start=true: wait for active/failed; false: wait for inactive/failed.
+ * Returns 0=success, 1=failed state, -1=timeout/error. */
+static int wait_for_unit_state(const char *name, bool for_start, int timeout_secs) {
+        uint64_t deadline = monotonic_usec() + (uint64_t)timeout_secs * USEC_PER_SEC;
+
+        for (;;) {
+                char req[512], resp[4096];
+                snprintf(req, sizeof(req), "{\"method\":\"GetUnitStatus\",\"name\":\"%s\"}", name);
+                if (call_daemon(req, resp, sizeof(resp)) < 0) return -1;
+
+                _cleanup_free_ char *state = json_get_str(resp, "active_state");
+                if (state) {
+                        if (for_start) {
+                                if (streq(state, "active"))   return 0;
+                                if (streq(state, "failed"))   return 1;
+                        } else {
+                                if (streq(state, "inactive")) return 0;
+                                if (streq(state, "failed"))   return 0;
+                        }
+                }
+
+                if (monotonic_usec() >= deadline) return -1;
+                usleep(100000); /* 100ms */
+        }
+}
+
 /* ---- Command implementations ---- */
 
 static int cmd_start(int argc, char *argv[]) {
@@ -196,9 +230,19 @@ static int cmd_start(int argc, char *argv[]) {
                 snprintf(req, sizeof(req), "{\"method\":\"StartUnit\",\"name\":\"%s\",\"mode\":\"replace\"}",
                         argv[i]);
                 if (call_daemon(req, resp, sizeof(resp)) < 0) return 1;
-                if (!check_response(resp, argv[i])) ret = 1;
-                else if (!opt_quiet)
-                        printf("Started %s\n", argv[i]);
+                if (!check_response(resp, argv[i])) { ret = 1; continue; }
+                if (!opt_no_block) {
+                        int r = wait_for_unit_state(argv[i], true, 30);
+                        if (r < 0) {
+                                fprintf(stderr, "Timeout waiting for %s to start\n", argv[i]);
+                                ret = 1; continue;
+                        }
+                        if (r > 0) {
+                                fprintf(stderr, "%s failed to start\n", argv[i]);
+                                ret = 1; continue;
+                        }
+                }
+                if (!opt_quiet) printf("Started %s\n", argv[i]);
         }
         return ret;
 }
@@ -210,9 +254,15 @@ static int cmd_stop(int argc, char *argv[]) {
                 snprintf(req, sizeof(req), "{\"method\":\"StopUnit\",\"name\":\"%s\",\"mode\":\"replace\"}",
                         argv[i]);
                 if (call_daemon(req, resp, sizeof(resp)) < 0) return 1;
-                if (!check_response(resp, argv[i])) ret = 1;
-                else if (!opt_quiet)
-                        printf("Stopped %s\n", argv[i]);
+                if (!check_response(resp, argv[i])) { ret = 1; continue; }
+                if (!opt_no_block) {
+                        int r = wait_for_unit_state(argv[i], false, 30);
+                        if (r < 0) {
+                                fprintf(stderr, "Timeout waiting for %s to stop\n", argv[i]);
+                                ret = 1; continue;
+                        }
+                }
+                if (!opt_quiet) printf("Stopped %s\n", argv[i]);
         }
         return ret;
 }
@@ -224,9 +274,19 @@ static int cmd_restart(int argc, char *argv[]) {
                 snprintf(req, sizeof(req), "{\"method\":\"RestartUnit\",\"name\":\"%s\",\"mode\":\"replace\"}",
                         argv[i]);
                 if (call_daemon(req, resp, sizeof(resp)) < 0) return 1;
-                if (!check_response(resp, argv[i])) ret = 1;
-                else if (!opt_quiet)
-                        printf("Restarted %s\n", argv[i]);
+                if (!check_response(resp, argv[i])) { ret = 1; continue; }
+                if (!opt_no_block) {
+                        int r = wait_for_unit_state(argv[i], true, 30);
+                        if (r < 0) {
+                                fprintf(stderr, "Timeout waiting for %s to restart\n", argv[i]);
+                                ret = 1; continue;
+                        }
+                        if (r > 0) {
+                                fprintf(stderr, "%s failed after restart\n", argv[i]);
+                                ret = 1; continue;
+                        }
+                }
+                if (!opt_quiet) printf("Restarted %s\n", argv[i]);
         }
         return ret;
 }
@@ -604,14 +664,133 @@ static int cmd_daemon_reload(void) {
         return 0;
 }
 
+/* Mapping from systemd property names to our JSON keys */
+static const struct { const char *prop; const char *key; } prop_map[] = {
+        { "Id",                   "name"          },
+        { "Description",          "description"   },
+        { "LoadState",            "load_state"     },
+        { "ActiveState",          "active_state"   },
+        { "SubState",             "sub_state"      },
+        { "FragmentPath",         "path"           },
+        { "UnitFileState",        "enabled"        },
+        { "MainPID",              "main_pid"       },
+        { "ExecMainPID",          "main_pid"       },
+        { "NRestarts",            "restart_count"  },
+        { "ActiveEnterTimestamp", "active_since"   },
+        { "StatusText",           "sub_state"      },
+        { NULL, NULL }
+};
+
+static bool prop_requested(const char *prop) {
+        if (opt_n_properties == 0) return true; /* no filter → show all */
+        for (int i = 0; i < opt_n_properties; i++)
+                if (streq(opt_properties[i], prop)) return true;
+        return false;
+}
+
 static int cmd_show(int argc, char *argv[]) {
+        if (opt_json) {
+                /* Raw JSON passthrough */
+                for (int i = 0; i < argc; i++) {
+                        char req[512], resp[16384];
+                        snprintf(req, sizeof(req), "{\"method\":\"GetUnitStatus\",\"name\":\"%s\"}", argv[i]);
+                        if (call_daemon(req, resp, sizeof(resp)) < 0) return 1;
+                        printf("%s\n", resp);
+                }
+                return 0;
+        }
+
         for (int i = 0; i < argc; i++) {
                 char req[512], resp[16384];
                 snprintf(req, sizeof(req), "{\"method\":\"GetUnitStatus\",\"name\":\"%s\"}", argv[i]);
                 if (call_daemon(req, resp, sizeof(resp)) < 0) return 1;
-                printf("%s\n", resp);
+
+                if (i > 0) printf("\n");
+
+                for (int p = 0; prop_map[p].prop; p++) {
+                        if (!prop_requested(prop_map[p].prop)) continue;
+                        _cleanup_free_ char *val = json_get_str(resp, prop_map[p].key);
+                        if (!val) {
+                                /* Try as integer */
+                                long long iv = json_get_int(resp, prop_map[p].key);
+                                if (iv >= 0)
+                                        printf("%s=%lld\n", prop_map[p].prop, iv);
+                                else
+                                        printf("%s=\n", prop_map[p].prop);
+                        } else {
+                                /* UnitFileState: map true/false to enabled/disabled */
+                                if (streq(prop_map[p].key, "enabled"))
+                                        printf("%s=%s\n", prop_map[p].prop,
+                                                streq(val, "true") ? "enabled" : "disabled");
+                                else
+                                        printf("%s=%s\n", prop_map[p].prop, val);
+                        }
+                }
         }
         return 0;
+}
+
+static int cmd_edit(int argc, char *argv[]) {
+        const char *editor = getenv("VISUAL");
+        if (!editor) editor = getenv("EDITOR");
+        if (!editor) editor = "vi";
+
+        int ret = 0;
+        for (int i = 0; i < argc; i++) {
+                /* Determine edit path: $XDG_CONFIG_HOME/systemd/user/<unit> */
+                _cleanup_free_ char *config = psm_config_dir();
+                char edit_path[4096];
+                snprintf(edit_path, sizeof(edit_path), "%s/systemd/user/%s", config, argv[i]);
+
+                /* Ensure parent dir exists */
+                char dir[4096];
+                snprintf(dir, sizeof(dir), "%s/systemd/user", config);
+                psm_mkdir_p(dir, 0755);
+
+                /* If the file doesn't exist yet, seed it from the current unit path */
+                if (access(edit_path, F_OK) != 0) {
+                        char req[512], resp[4096];
+                        snprintf(req, sizeof(req), "{\"method\":\"GetUnitStatus\",\"name\":\"%s\"}", argv[i]);
+                        if (call_daemon(req, resp, sizeof(resp)) == 0) {
+                                _cleanup_free_ char *src_path = json_get_str(resp, "path");
+                                if (src_path && src_path[0] && access(src_path, R_OK) == 0 &&
+                                    !streq(src_path, edit_path)) {
+                                        FILE *src = fopen(src_path, "r");
+                                        FILE *dst = fopen(edit_path, "w");
+                                        if (src && dst) {
+                                                char buf[4096];
+                                                size_t n;
+                                                while ((n = fread(buf, 1, sizeof(buf), src)) > 0)
+                                                        fwrite(buf, 1, n, dst);
+                                        }
+                                        if (src) fclose(src);
+                                        if (dst) fclose(dst);
+                                }
+                        }
+                }
+
+                /* Launch editor */
+                pid_t pid = fork();
+                if (pid == 0) {
+                        char *ea[] = { (char *)editor, edit_path, NULL };
+                        execvp(editor, ea);
+                        _exit(127);
+                } else if (pid > 0) {
+                        int status;
+                        waitpid(pid, &status, 0);
+                        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+                                fprintf(stderr, "Editor exited with error\n");
+                                ret = 1;
+                        }
+                } else {
+                        fprintf(stderr, "fork: %s\n", strerror(errno));
+                        ret = 1;
+                }
+        }
+
+        if (ret == 0)
+                ret = cmd_daemon_reload();
+        return ret;
 }
 
 static int cmd_cat(int argc, char *argv[]) {
@@ -709,8 +888,9 @@ static void print_usage(const char *argv0) {
 "  restart UNIT...        Restart unit(s)\n"
 "  reload UNIT...         Reload unit(s) configuration\n"
 "  status [UNIT...]       Show unit status\n"
-"  show UNIT...           Show unit properties (JSON)\n"
+"  show UNIT...           Show unit properties (KEY=value)\n"
 "  cat UNIT...            Show unit file(s)\n"
+"  edit UNIT...           Edit unit file(s) in $EDITOR\n"
 "  is-active UNIT         Check if unit is active (0=yes)\n"
 "  is-failed UNIT         Check if unit has failed (0=yes)\n"
 "  is-enabled UNIT        Check if unit is enabled (0=yes)\n"
@@ -722,6 +902,8 @@ static void print_usage(const char *argv0) {
 "\n"
 "Options:\n"
 "  -q, --quiet            Suppress informational output\n"
+"  --no-block             Don't wait for start/stop to complete\n"
+"  -p, --property=NAME    Show only this property (repeatable, for show)\n"
 "  --no-pager             Don't pipe output to pager\n"
 "  --output=json          Output in JSON format\n"
 "  --lines=N, -n N        Number of journal lines to show in status\n"
@@ -732,28 +914,35 @@ static void print_usage(const char *argv0) {
 
 int main(int argc, char *argv[]) {
         static const struct option opts[] = {
-                { "quiet",     no_argument,       NULL, 'q' },
-                { "no-pager",  no_argument,       NULL, 'P' },
-                { "output",    required_argument, NULL, 'o' },
-                { "lines",     required_argument, NULL, 'n' },
-                { "user",      no_argument,       NULL, 'u' },
-                { "system",    no_argument,       NULL, 's' },
-                { "host",      required_argument, NULL, 'H' },
-                { "version",   no_argument,       NULL, 'V' },
-                { "help",      no_argument,       NULL, 'h' },
+                { "quiet",      no_argument,       NULL, 'q' },
+                { "no-pager",   no_argument,       NULL, 'P' },
+                { "no-block",   no_argument,       NULL, 'b' },
+                { "output",     required_argument, NULL, 'o' },
+                { "lines",      required_argument, NULL, 'n' },
+                { "property",   required_argument, NULL, 'p' },
+                { "user",       no_argument,       NULL, 'u' },
+                { "system",     no_argument,       NULL, 's' },
+                { "host",       required_argument, NULL, 'H' },
+                { "version",    no_argument,       NULL, 'V' },
+                { "help",       no_argument,       NULL, 'h' },
                 { NULL, 0, NULL, 0 }
         };
 
         int c;
-        while ((c = getopt_long(argc, argv, "qn:hH:us", opts, NULL)) != -1) {
+        while ((c = getopt_long(argc, argv, "qbn:p:hH:us", opts, NULL)) != -1) {
                 switch (c) {
                 case 'q': opt_quiet    = true; break;
                 case 'P': opt_no_pager = true; break;
+                case 'b': opt_no_block = true; break;
                 case 'o':
                         if (streq(optarg, "json")) opt_json = true;
                         break;
                 case 'n':
                         opt_lines = atoi(optarg);
+                        break;
+                case 'p':
+                        if (opt_n_properties < (int)ARRAY_SIZE(opt_properties))
+                                opt_properties[opt_n_properties++] = optarg;
                         break;
                 case 'H': opt_host = optarg; break;
                 case 'u': break; /* --user: already default */
@@ -857,6 +1046,7 @@ int main(int argc, char *argv[]) {
         if (streq(cmd, "status"))         return cmd_status(cmd_argc, cmd_argv);
         if (streq(cmd, "show"))           return cmd_show(cmd_argc, cmd_argv);
         if (streq(cmd, "cat"))            return cmd_cat(cmd_argc, cmd_argv);
+        if (streq(cmd, "edit"))           return cmd_edit(cmd_argc, cmd_argv);
         if (streq(cmd, "enable"))         return cmd_enable(cmd_argc, cmd_argv);
         if (streq(cmd, "disable"))        return cmd_disable(cmd_argc, cmd_argv);
         if (streq(cmd, "is-active"))      return cmd_is_active(cmd_argc, cmd_argv);

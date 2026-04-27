@@ -140,6 +140,56 @@ static int manager_add_unit(Manager *m, Unit *u) {
         return 0;
 }
 
+/* If name is a template instance like "foo@bar.service", fill template_buf with "foo@.service"
+ * and instance_buf with "bar", then return true. */
+static bool unit_name_is_instance(const char *name,
+                                   char *template_buf, size_t template_sz,
+                                   char *instance_buf, size_t instance_sz) {
+        const char *at  = strchr(name, '@');
+        if (!at) return false;
+        const char *dot = strrchr(name, '.');
+        if (!dot || dot <= at + 1) return false; /* no dot, or "foo@.service" (empty instance) */
+
+        size_t inst_len = (size_t)(dot - (at + 1));
+        if (inst_len == 0 || inst_len + 1 > instance_sz) return false;
+        memcpy(instance_buf, at + 1, inst_len);
+        instance_buf[inst_len] = '\0';
+
+        size_t prefix_len = (size_t)(at - name) + 1; /* includes '@' */
+        if (prefix_len + strlen(dot) + 1 > template_sz) return false;
+        memcpy(template_buf, name, prefix_len);
+        strcpy(template_buf + prefix_len, dot);
+        return true;
+}
+
+/* Replace %i with instance in s; returns new heap-allocated string */
+static char *substitute_instance(const char *s, const char *instance) {
+        if (!s) return NULL;
+        size_t ilen = strlen(instance);
+        size_t slen = strlen(s);
+
+        /* Upper-bound new length: each %i (2 chars) → ilen chars */
+        size_t new_sz = slen + 1;
+        for (const char *p = s; *p; p++)
+                if (*p == '%' && *(p+1) == 'i') new_sz += ilen;
+
+        char *result = malloc(new_sz);
+        if (!result) return NULL;
+
+        char *out = result;
+        for (const char *p = s; *p; ) {
+                if (*p == '%' && *(p+1) == 'i') {
+                        memcpy(out, instance, ilen);
+                        out += ilen;
+                        p += 2;
+                } else {
+                        *out++ = *p++;
+                }
+        }
+        *out = '\0';
+        return result;
+}
+
 /* Find a unit file in the search path; fills buf with full path */
 static bool find_unit_file(const char *search_path, const char *name, char *buf, size_t sz) {
         char *paths = strdup(search_path);
@@ -183,7 +233,43 @@ int manager_load_unit(Manager *m, const char *name, Unit **ret) {
                         /* Continue with empty config */
                 }
         } else {
-                log_debug("No unit file found for %s (synthetic/target)", name);
+                /* Template fallback: "foo@bar.service" → try "foo@.service" */
+                char template_name[256], instance[256];
+                if (unit_name_is_instance(name, template_name, sizeof(template_name),
+                                          instance, sizeof(instance)) &&
+                    find_unit_file(m->unit_search_path, template_name, path, sizeof(path))) {
+                        log_debug("Loading %s from template %s (instance=%s)",
+                                  name, template_name, instance);
+                        int r = parse_unit_file(path, &u->config);
+                        if (r >= 0) {
+                                /* Substitute %i in string fields */
+                                if (u->config->unit.description) {
+                                        char *s = substitute_instance(u->config->unit.description, instance);
+                                        free(u->config->unit.description);
+                                        u->config->unit.description = s;
+                                }
+                                if (u->config->service.exec_start) {
+                                        char *s = substitute_instance(u->config->service.exec_start, instance);
+                                        free(u->config->service.exec_start);
+                                        u->config->service.exec_start = s;
+                                }
+                                if (u->config->service.exec_stop) {
+                                        char *s = substitute_instance(u->config->service.exec_stop, instance);
+                                        free(u->config->service.exec_stop);
+                                        u->config->service.exec_stop = s;
+                                }
+                                if (u->config->service.working_directory) {
+                                        char *s = substitute_instance(u->config->service.working_directory, instance);
+                                        free(u->config->service.working_directory);
+                                        u->config->service.working_directory = s;
+                                }
+                                /* Fix name to reflect the instance, not the template */
+                                free(u->config->name);
+                                u->config->name = strdup(name);
+                        }
+                } else {
+                        log_debug("No unit file found for %s (synthetic/target)", name);
+                }
         }
 
         /* Targets don't need a file */
@@ -221,6 +307,8 @@ int manager_load_all(Manager *m) {
                         struct dirent *de;
                         while ((de = readdir(d))) {
                                 if (de->d_name[0] == '.') continue;
+                                /* Skip template files like "foo@.service" — loaded on-demand as instances */
+                                if (strstr(de->d_name, "@.")) continue;
                                 UnitType t = unit_type_from_name(de->d_name);
                                 if (t == _UNIT_TYPE_INVALID) continue;
                                 /* Skip if already loaded */
