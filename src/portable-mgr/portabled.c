@@ -131,12 +131,11 @@ int main(int argc, char *argv[]) {
         /* Write PID file */
         _cleanup_free_ char *runtime = psm_runtime_dir();
         char pid_path[4096];
-        snprintf(pid_path, sizeof(pid_path), "%s/systemd/manager.pid", runtime);
-        psm_mkdir_p(runtime, 0700);
+        snprintf(pid_path, sizeof(pid_path), "%s/psm/manager.pid", runtime);
         {
-                char rpdir[4096];
-                snprintf(rpdir, sizeof(rpdir), "%s/systemd", runtime);
-                psm_mkdir_p(rpdir, 0700);
+                char psmdir[4096];
+                snprintf(psmdir, sizeof(psmdir), "%s/psm", runtime);
+                psm_mkdir_p(psmdir, 0700);
         }
         {
                 FILE *pf = fopen(pid_path, "w");

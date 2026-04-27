@@ -11,7 +11,7 @@
 char *ipc_socket_path(void) {
         _cleanup_free_ char *runtime = psm_runtime_dir();
         char buf[4096];
-        snprintf(buf, sizeof(buf), "%s/systemd/private/manager.sock", runtime);
+        snprintf(buf, sizeof(buf), "%s/psm/manager.sock", runtime);
         return strdup(buf);
 }
 
@@ -227,7 +227,12 @@ int ipc_server_new(IpcServer **ret, const char *sock_path, Manager *mgr) {
         char *slash = strrchr(dir, '/');
         if (slash) {
                 *slash = '\0';
-                psm_mkdir_p(dir, 0700);
+                int r = psm_mkdir_p(dir, 0700);
+                if (r < 0) {
+                        log_error("mkdir_p(%s): %s", dir, strerror(-r));
+                        ipc_server_free(s);
+                        return r;
+                }
         }
 
         /* Remove stale socket */

@@ -90,12 +90,21 @@ int psm_mkdir_p(const char *path, mode_t mode) {
         for (char *p = tmp + 1; *p; p++) {
                 if (*p == '/') {
                         *p = '\0';
-                        if (mkdir(tmp, mode) < 0 && errno != EEXIST)
-                                return -errno;
+                        if (mkdir(tmp, mode) < 0) {
+                                if (errno != EEXIST) return -errno;
+                                /* EEXIST: verify the existing path is a directory */
+                                struct stat st;
+                                if (stat(tmp, &st) < 0 || !S_ISDIR(st.st_mode))
+                                        return -ENOTDIR;
+                        }
                         *p = '/';
                 }
         }
-        if (mkdir(tmp, mode) < 0 && errno != EEXIST)
-                return -errno;
+        if (mkdir(tmp, mode) < 0) {
+                if (errno != EEXIST) return -errno;
+                struct stat st;
+                if (stat(tmp, &st) < 0 || !S_ISDIR(st.st_mode))
+                        return -ENOTDIR;
+        }
         return 0;
 }
