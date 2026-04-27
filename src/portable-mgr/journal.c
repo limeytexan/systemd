@@ -365,6 +365,11 @@ int journal_reader_fileno(JournalReader *r) {
         return fileno(r->f);
 }
 
+void journal_reader_clearerr(JournalReader *r) {
+        if (r && r->f)
+                clearerr(r->f);
+}
+
 int journal_reader_seek_tail(JournalReader *r, int n) {
         if (!r || !r->f || n <= 0) return -EINVAL;
         if (n == 0) {

@@ -181,9 +181,6 @@ static bool entry_matches(const JournalEntry *e) {
 /* ---- Follow mode (tail -f equivalent) ---- */
 
 static void follow_journal(JournalReader *r) {
-        int fd = journal_reader_fileno(r);
-        struct pollfd pfd = { .fd = fd, .events = POLLIN };
-
         printf("-- Journal begin --\n");
         fflush(stdout);
 
@@ -197,11 +194,14 @@ static void follow_journal(JournalReader *r) {
                         fflush(stdout);
                         continue;
                 }
-                /* EOF: poll for new data */
-                if (fd < 0) break;
-                int p = poll(&pfd, 1, 1000);
-                if (p < 0 && errno != EINTR) break;
-                (void)p;
+                /*
+                 * EOF: poll() on a regular file always returns immediately
+                 * (POSIX allows it; both Linux and macOS do this), so we
+                 * can't use the file fd to block.  Sleep 200 ms instead,
+                 * then clear the sticky feof() flag before retrying.
+                 */
+                poll(NULL, 0, 200);
+                journal_reader_clearerr(r);
         }
 }
 
