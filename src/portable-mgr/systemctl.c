@@ -33,6 +33,22 @@ static bool opt_json     = false;
 static int  opt_lines    = 10; /* for status: number of journal lines */
 static const char *opt_host = NULL;
 
+/* Return true if name already has a known unit type suffix */
+static bool unit_name_has_suffix(const char *name) {
+        static const char *const suffixes[] = {
+                ".service", ".socket", ".target", ".path", ".timer",
+                ".mount", ".automount", ".swap", ".slice", ".scope", ".device",
+                NULL
+        };
+        size_t nlen = strlen(name);
+        for (const char *const *s = suffixes; *s; s++) {
+                size_t slen = strlen(*s);
+                if (nlen >= slen && memcmp(name + nlen - slen, *s, slen) == 0)
+                        return true;
+        }
+        return false;
+}
+
 /* ---- Formatting helpers ---- */
 
 static void print_colored(const char *color, const char *text) {
@@ -658,6 +674,19 @@ int main(int argc, char *argv[]) {
         const char *cmd = rem_argv[0];
         int cmd_argc    = rem_argc - 1;
         char **cmd_argv = rem_argv + 1;
+
+        /* Append .service to bare unit names, matching stock systemctl behavior */
+        if (!streq(cmd, "daemon-reload") && !streq(cmd, "list-units")) {
+                for (int i = 0; i < cmd_argc; i++) {
+                        if (!unit_name_has_suffix(cmd_argv[i])) {
+                                char *m = malloc(strlen(cmd_argv[i]) + sizeof(".service"));
+                                if (m) {
+                                        sprintf(m, "%s.service", cmd_argv[i]);
+                                        argv[optind + 1 + i] = m;
+                                }
+                        }
+                }
+        }
 
         if (streq(cmd, "start"))          return cmd_start(cmd_argc, cmd_argv);
         if (streq(cmd, "stop"))           return cmd_stop(cmd_argc, cmd_argv);
