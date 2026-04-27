@@ -333,9 +333,7 @@ conf.set10('ENABLE_FIRST_BOOT_FULL_PRESET',                   get_option('first-
 # On Darwin, subdir_done() exits this file so no Linux-specific code is compiled.
 if get_option('portable-manager') or host_machine.system() == 'darwin'
         subdir('src/portable-mgr')
-        if host_machine.system() == 'darwin'
-                subdir_done()
-        endif
+        subdir_done()
 endif
 
 #####################################################################

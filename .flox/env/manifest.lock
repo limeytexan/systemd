@@ -12,10 +12,17 @@
         ]
       },
       "claude-code": {
-        "pkg-path": "claude-code"
+        "pkg-path": "flox/claude-code"
       },
       "gcc": {
         "pkg-path": "gcc"
+      },
+      "gperf": {
+        "pkg-path": "gperf",
+        "systems": [
+          "x86_64-linux",
+          "aarch64-linux"
+        ]
       },
       "meson": {
         "pkg-path": "meson"
@@ -24,12 +31,10 @@
         "pkg-path": "ninja"
       }
     },
-    "hook": {},
-    "profile": {},
     "options": {},
     "build": {
       "systemd-portable": {
-        "command": "  # Configure (once, or reconfigure if already set up)\n  # meson setup build-darwin --prefix=$out\n  meson setup --reconfigure build-darwin --prefix=$out || true\n\n  # Build + install\n  ninja -C build-darwin install\n",
+        "command": "  oslc=\"$(uname | tr '[A-Z]' '[a-z]')\"\n  meson setup --reconfigure build-$oslc --prefix=$out -Dconfigfiledir=$out/etc -Ddocdir=$out -Dportable-manager=true\n\n  # Build + install\n  ninja -C build-$oslc install\n",
         "version": "v260-rc2-81",
         "description": "Portable adaptation of systemd for orchestrating services in user space"
       }
@@ -39,20 +44,19 @@
     {
       "attr_path": "cctools",
       "broken": false,
-      "derivation": "/nix/store/l4x9vf72mnv5k5picwm1szsi5hjjfyyi-cctools-1010.6.drv",
+      "derivation": "/nix/store/1dc718hy9zqxdwys5syahr4lffyv4mcn-cctools-1010.6.drv",
       "description": "Classic linker for Darwin",
       "install_id": "cctools",
       "license": "[ APSL-2.0, GPL-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "cctools-1010.6",
       "pname": "cctools",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T04:40:03.584193Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T06:03:33.209836Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "1010.6",
@@ -60,17 +64,14 @@
         "man",
         "out",
         "out",
-        "out",
-        "out",
-        "out",
         "out"
       ],
       "outputs": {
-        "dev": "/nix/store/rp3q1wrnqks6h8ppmm7q8jin29jkcmdv-cctools-1010.6-dev",
-        "gas": "/nix/store/mq0r6cbadn6rmh8wd2f788ib208396ai-cctools-1010.6-gas",
-        "libtool": "/nix/store/sba8hcsfwkhf0wqrd2hwnd8rd5jp2fxv-cctools-1010.6-libtool",
-        "man": "/nix/store/nqycaz6c97i6k9j83kkkn6in5lr444fq-cctools-1010.6-man",
-        "out": "/nix/store/gfmlqi0fda0rnq46j0hbidicyp80kjmn-cctools-1010.6"
+        "dev": "/nix/store/lg74bg6ap03aza3rrk7r866v5vkcay1m-cctools-1010.6-dev",
+        "gas": "/nix/store/fqzldphl5lfhhwcixag2zrks21f43kia-cctools-1010.6-gas",
+        "libtool": "/nix/store/lawy0qykzxczbxwg68xbarl0na643l3q-cctools-1010.6-libtool",
+        "man": "/nix/store/cyp451hjzhljkywpdm65r4h0yglxzdla-cctools-1010.6-man",
+        "out": "/nix/store/dxk52da28ap6qmmqyppa454iz8wqqpv2-cctools-1010.6"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -79,20 +80,19 @@
     {
       "attr_path": "cctools",
       "broken": false,
-      "derivation": "/nix/store/ig60xah2xyahb8az4hm131rbmgai8swv-cctools-1010.6.drv",
+      "derivation": "/nix/store/hqa1m7ikcs7rxsnn68a6pvznw6wwzs9z-cctools-1010.6.drv",
       "description": "Classic linker for Darwin",
       "install_id": "cctools",
       "license": "[ APSL-2.0, GPL-2.0 ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "cctools-1010.6",
       "pname": "cctools",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T05:39:41.243908Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T07:05:08.257999Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "1010.6",
@@ -102,11 +102,11 @@
         "out"
       ],
       "outputs": {
-        "dev": "/nix/store/9pb4gdsxvcpy0w3k1ffks9vj0i0r00di-cctools-1010.6-dev",
-        "gas": "/nix/store/mml023609h3qj6v24gx144101n42w6fl-cctools-1010.6-gas",
-        "libtool": "/nix/store/pdkxf647n2cci3s1cr61xf4fij8mnxdz-cctools-1010.6-libtool",
-        "man": "/nix/store/mk6vl317bqn7fc55b1da9hp1aj61bmj4-cctools-1010.6-man",
-        "out": "/nix/store/vjafmpcy0sl9dbmwjwwmlal6d5apnwb2-cctools-1010.6"
+        "dev": "/nix/store/96cliv6sm49c3kpb5m3ramyw6sdc03h6-cctools-1010.6-dev",
+        "gas": "/nix/store/mwjxy8ij1ivclpvwr9f2rim5h7j2szxg-cctools-1010.6-gas",
+        "libtool": "/nix/store/6m0dmll6756qalmf3brc0k61x82ml61h-cctools-1010.6-libtool",
+        "man": "/nix/store/9c6cl4qsqgzkdqmz9mqkph70s7dnd517-cctools-1010.6-man",
+        "out": "/nix/store/9i64a54xwi8xkml0r4dqgm0f8362w58h-cctools-1010.6"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -115,28 +115,27 @@
     {
       "attr_path": "claude-code",
       "broken": false,
-      "derivation": "/nix/store/cnhpcvr7564gnlj9kj26fa0i7p28fmpb-claude-code-2.1.59.drv",
-      "description": "Agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster",
+      "derivation": "/nix/store/6pbshqnkrzpg3xj23jkprwsih88s9s5i-claude-code-2.1.118.drv",
+      "description": "Agentic coding tool from Anthropic",
       "install_id": "claude-code",
       "license": "Unfree",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "name": "claude-code-2.1.59",
+      "locked_url": "https://github.com/flox/floxenvs?rev=68bbb95e3946234785720a1a21138a66eaa8823c",
+      "name": "claude-code-2.1.118",
       "pname": "claude-code",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T04:40:03.729528Z",
+      "rev": "68bbb95e3946234785720a1a21138a66eaa8823c",
+      "rev_count": 2853,
+      "rev_date": "2026-04-23T08:12:25Z",
+      "scrape_date": "2026-04-27T15:39:48.329482920Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": true,
-      "version": "2.1.59",
+      "version": "2.1.118",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/m22wwnn4b3hlzgfq9c45ayinzljbc183-claude-code-2.1.59"
+        "out": "/nix/store/jr1wi667yjn32071wph00i2ky62c2smw-claude-code-2.1.118"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -145,28 +144,27 @@
     {
       "attr_path": "claude-code",
       "broken": false,
-      "derivation": "/nix/store/hf5m0ay3cmwy7fidsbkyml7jaaw0bwlp-claude-code-2.1.59.drv",
-      "description": "Agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster",
+      "derivation": "/nix/store/8hwa0fvymv4bf64408z60gxgwz45iqhi-claude-code-2.1.118.drv",
+      "description": "Agentic coding tool from Anthropic",
       "install_id": "claude-code",
       "license": "Unfree",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "name": "claude-code-2.1.59",
+      "locked_url": "https://github.com/flox/floxenvs?rev=68bbb95e3946234785720a1a21138a66eaa8823c",
+      "name": "claude-code-2.1.118",
       "pname": "claude-code",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T05:10:49.438227Z",
+      "rev": "68bbb95e3946234785720a1a21138a66eaa8823c",
+      "rev_count": 2853,
+      "rev_date": "2026-04-23T08:12:25Z",
+      "scrape_date": "2026-04-27T15:39:48.329484045Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": true,
-      "version": "2.1.59",
+      "version": "2.1.118",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/xgv9664p3q8nmzlkkgsbzfljh4n8nz8j-claude-code-2.1.59"
+        "out": "/nix/store/9aqm32n4gm0h05p40vf6bpsj5bycmis0-claude-code-2.1.118"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -175,28 +173,27 @@
     {
       "attr_path": "claude-code",
       "broken": false,
-      "derivation": "/nix/store/8f2763wmy0w0x4skr14qlc3cgrly2qgg-claude-code-2.1.59.drv",
-      "description": "Agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster",
+      "derivation": "/nix/store/qy3x66jgq6clmbq26kbr2s5sbgksk4g8-claude-code-2.1.118.drv",
+      "description": "Agentic coding tool from Anthropic",
       "install_id": "claude-code",
       "license": "Unfree",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "name": "claude-code-2.1.59",
+      "locked_url": "https://github.com/flox/floxenvs?rev=68bbb95e3946234785720a1a21138a66eaa8823c",
+      "name": "claude-code-2.1.118",
       "pname": "claude-code",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T05:39:41.387931Z",
+      "rev": "68bbb95e3946234785720a1a21138a66eaa8823c",
+      "rev_count": 2853,
+      "rev_date": "2026-04-23T08:12:25Z",
+      "scrape_date": "2026-04-27T15:39:48.329484754Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": true,
-      "version": "2.1.59",
+      "version": "2.1.118",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/xyhc4ys8ng585dbvriximicqkbrg5yda-claude-code-2.1.59"
+        "out": "/nix/store/3f00lyb2glasbwrm4sx85iyv3k0zgpna-claude-code-2.1.118"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -205,28 +202,27 @@
     {
       "attr_path": "claude-code",
       "broken": false,
-      "derivation": "/nix/store/mx7blr6qz0rizq5z436pphddyiy2mq6z-claude-code-2.1.59.drv",
-      "description": "Agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster",
+      "derivation": "/nix/store/vnhlw5kwn923q3vwww1wzpwl3n233ysm-claude-code-2.1.118.drv",
+      "description": "Agentic coding tool from Anthropic",
       "install_id": "claude-code",
       "license": "Unfree",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "name": "claude-code-2.1.59",
+      "locked_url": "https://github.com/flox/floxenvs?rev=68bbb95e3946234785720a1a21138a66eaa8823c",
+      "name": "claude-code-2.1.118",
       "pname": "claude-code",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T06:13:30.098309Z",
+      "rev": "68bbb95e3946234785720a1a21138a66eaa8823c",
+      "rev_count": 2853,
+      "rev_date": "2026-04-23T08:12:25Z",
+      "scrape_date": "2026-04-27T15:39:48.329486629Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": true,
-      "version": "2.1.59",
+      "version": "2.1.118",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/c0szkvghm2knwa6i1lgvbxjl8mlg34x5-claude-code-2.1.59"
+        "out": "/nix/store/5j6djxvjszinc3z1fmp1ah96420z90zl-claude-code-2.1.118"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -235,20 +231,19 @@
     {
       "attr_path": "gcc",
       "broken": false,
-      "derivation": "/nix/store/5dclnins9jkvhxffsw72i9b1dgxp1768-gcc-wrapper-15.2.0.drv",
+      "derivation": "/nix/store/ifb3nz925fcskfqd3d36r0bv75s1cg27-gcc-wrapper-15.2.0.drv",
       "description": "GNU Compiler Collection, version 15.2.0 (wrapper script)",
       "install_id": "gcc",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "gcc-wrapper-15.2.0",
       "pname": "gcc",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T04:40:04.586184Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T06:03:34.136210Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "15.2.0",
@@ -257,9 +252,9 @@
         "out"
       ],
       "outputs": {
-        "info": "/nix/store/2lckjqhqbpzv4m6qycsyirzvcgkqwi62-gcc-wrapper-15.2.0-info",
-        "man": "/nix/store/x3jrq5zaj6f8m2zk96m2r9bk61dcgw7l-gcc-wrapper-15.2.0-man",
-        "out": "/nix/store/ljjhqql9gdv64pwn08cmmkzjpkwkkgmc-gcc-wrapper-15.2.0"
+        "info": "/nix/store/gblx2c361wmf7fn839ppi2z2bw2wzvhz-gcc-wrapper-15.2.0-info",
+        "man": "/nix/store/65ygwdw9pjlrycn1aki9wfj97fb04wir-gcc-wrapper-15.2.0-man",
+        "out": "/nix/store/jskl8vz7wnwlsjmh88ia3wyw4yyfjgb5-gcc-wrapper-15.2.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -268,33 +263,31 @@
     {
       "attr_path": "gcc",
       "broken": false,
-      "derivation": "/nix/store/rwb9v0myg18sx7fn003h1ymla7fd4yay-gcc-wrapper-15.2.0.drv",
+      "derivation": "/nix/store/97y2g0zkxi71g1v6c0gi1wfgnginv2r0-gcc-wrapper-15.2.0.drv",
       "description": "GNU Compiler Collection, version 15.2.0 (wrapper script)",
       "install_id": "gcc",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "gcc-wrapper-15.2.0",
       "pname": "gcc",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T05:10:50.584173Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T06:35:00.143992Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "15.2.0",
       "outputs_to_install": [
         "man",
         "out",
-        "out",
         "out"
       ],
       "outputs": {
-        "info": "/nix/store/0ps642kc7j7wg0bz3hb978plg16xfi7n-gcc-wrapper-15.2.0-info",
-        "man": "/nix/store/y50lsbpbiy4wg5ccbbb68rabs2n3m69b-gcc-wrapper-15.2.0-man",
-        "out": "/nix/store/6hazq450ci6m382yq4ym8a6mbiv9mfsk-gcc-wrapper-15.2.0"
+        "info": "/nix/store/zq0lwn9ai4q1jcfkrrc98cia15yp9zv2-gcc-wrapper-15.2.0-info",
+        "man": "/nix/store/3sbhv99id58xjminaqr8m6dq1h6zvfcp-gcc-wrapper-15.2.0-man",
+        "out": "/nix/store/waack2w5n0208w1qy7pxnwxbsq2n26vm-gcc-wrapper-15.2.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -303,20 +296,19 @@
     {
       "attr_path": "gcc",
       "broken": false,
-      "derivation": "/nix/store/fczb95p9z7060rnyn6lvnlcawqhb9xx9-gcc-wrapper-15.2.0.drv",
+      "derivation": "/nix/store/lb2xrqbg5m6lzn0pm3v13dn1lh4np68y-gcc-wrapper-15.2.0.drv",
       "description": "GNU Compiler Collection, version 15.2.0 (wrapper script)",
       "install_id": "gcc",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "gcc-wrapper-15.2.0",
       "pname": "gcc",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T05:39:42.131162Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T07:05:09.206295Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "15.2.0",
@@ -325,9 +317,9 @@
         "out"
       ],
       "outputs": {
-        "info": "/nix/store/a0c8viyq35k1lzx4w1g76kcxsjra5d9h-gcc-wrapper-15.2.0-info",
-        "man": "/nix/store/gln5ld8gg6xfaczzyi84r586pwax8qz5-gcc-wrapper-15.2.0-man",
-        "out": "/nix/store/adhxk22r0v0jsm26z0hfrzznwix7l491-gcc-wrapper-15.2.0"
+        "info": "/nix/store/36gfwxk8n31cijjswpxbji3y2lbigcbp-gcc-wrapper-15.2.0-info",
+        "man": "/nix/store/f9n421lz4dbxdq8pvv5szk8dp4lvyqpl-gcc-wrapper-15.2.0-man",
+        "out": "/nix/store/k1mhp0ywg1xp6mzixk1r3ccjzwixmbw0-gcc-wrapper-15.2.0"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -336,33 +328,89 @@
     {
       "attr_path": "gcc",
       "broken": false,
-      "derivation": "/nix/store/l8kjykqqnkh48cxjhz1p9wh53mb65dpf-gcc-wrapper-15.2.0.drv",
+      "derivation": "/nix/store/lsh3l4h6f89bxqgmx0jglc14cagfin9z-gcc-wrapper-15.2.0.drv",
       "description": "GNU Compiler Collection, version 15.2.0 (wrapper script)",
       "install_id": "gcc",
       "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "gcc-wrapper-15.2.0",
       "pname": "gcc",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T06:13:31.471950Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T07:39:14.354890Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "15.2.0",
       "outputs_to_install": [
         "man",
         "out",
-        "out",
         "out"
       ],
       "outputs": {
-        "info": "/nix/store/mj78x8b2vp0q9j6xf7bmvinn3m2csfhp-gcc-wrapper-15.2.0-info",
-        "man": "/nix/store/crcj0frpw4i8shmfwgyfx9fsqklf2iq5-gcc-wrapper-15.2.0-man",
-        "out": "/nix/store/kbw2j1vag664b3sj3rjwz9v53cqx87sb-gcc-wrapper-15.2.0"
+        "info": "/nix/store/gzq6x9nsc2g1b4z0xlxnl3n8ahzcrgql-gcc-wrapper-15.2.0-info",
+        "man": "/nix/store/n58glhbv7fnb3bqvbdh6ib7pv456cm4n-gcc-wrapper-15.2.0-man",
+        "out": "/nix/store/hb2bs5fg5wkm04x565737qd5nh2hy5nk-gcc-wrapper-15.2.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gperf",
+      "broken": false,
+      "derivation": "/nix/store/kym98nnwg3p0amxzaywbhpww1f86s93p-gperf-3.3.drv",
+      "description": "Perfect hash function generator",
+      "install_id": "gperf",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
+      "name": "gperf-3.3",
+      "pname": "gperf",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T06:35:01.142800Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/g6wdx75y1mxyymbp19a3n4q686sd841k-gperf-3.3"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gperf",
+      "broken": false,
+      "derivation": "/nix/store/winlcndgxp2x4r9bmd1mk92cai45mvyg-gperf-3.3.drv",
+      "description": "Perfect hash function generator",
+      "install_id": "gperf",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
+      "name": "gperf-3.3",
+      "pname": "gperf",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T07:39:15.401869Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/925mknmy51jhqm4r0qjj2lh9b2dbha4x-gperf-3.3"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -371,20 +419,19 @@
     {
       "attr_path": "meson",
       "broken": false,
-      "derivation": "/nix/store/33yv121cv5isl3cfwnmbpg83dylllcgx-meson-1.10.1.drv",
+      "derivation": "/nix/store/s0rjr8i9dfxyp4ii22f3vaqk1wnhjydr-meson-1.10.1.drv",
       "description": "Open source, fast and friendly build system made in Python",
       "install_id": "meson",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "meson-1.10.1",
       "pname": "meson",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T04:40:25.033657Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T06:03:55.704629Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "1.10.1",
@@ -392,8 +439,8 @@
         "out"
       ],
       "outputs": {
-        "dist": "/nix/store/cx5b8qv8n5ab5c8j9fwb5rlkrqshs2zx-meson-1.10.1-dist",
-        "out": "/nix/store/9c2gjc63ma9krwnxnj9pbb6ag3pyxbfg-meson-1.10.1"
+        "dist": "/nix/store/jji76kzmzxcjkag6b51d324xmajchlpc-meson-1.10.1-dist",
+        "out": "/nix/store/agjh5y8i1rvlxxrln3aq6b8hcbsmjjrd-meson-1.10.1"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -402,20 +449,19 @@
     {
       "attr_path": "meson",
       "broken": false,
-      "derivation": "/nix/store/v7yfa83dr5fdqgxardbgcmhn7wpqhbj7-meson-1.10.1.drv",
+      "derivation": "/nix/store/svyaxprilarg62vd79vh6dmpbgyd0wsn-meson-1.10.1.drv",
       "description": "Open source, fast and friendly build system made in Python",
       "install_id": "meson",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "meson-1.10.1",
       "pname": "meson",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T05:11:23.658655Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T06:35:33.447761Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "1.10.1",
@@ -423,8 +469,8 @@
         "out"
       ],
       "outputs": {
-        "dist": "/nix/store/m88xn9i304shi8af21kv1rn1n3rafj10-meson-1.10.1-dist",
-        "out": "/nix/store/93hgc2zylhnh71id1mzi0k2plj52pr3r-meson-1.10.1"
+        "dist": "/nix/store/cqw739zc6cgl1p7nj0s57jqb8qzmarzz-meson-1.10.1-dist",
+        "out": "/nix/store/99yrxiiyhq8ir3467bkngmwzggw5h25q-meson-1.10.1"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -433,20 +479,19 @@
     {
       "attr_path": "meson",
       "broken": false,
-      "derivation": "/nix/store/9x8hkmciw6b343kvp8adg42hjvs8kq2q-meson-1.10.1.drv",
+      "derivation": "/nix/store/mb8bx5i7zs0gr9i3dx3z2qw7hpcg4ci9-meson-1.10.1.drv",
       "description": "Open source, fast and friendly build system made in Python",
       "install_id": "meson",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "meson-1.10.1",
       "pname": "meson",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T05:40:02.685361Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T07:05:30.464340Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "1.10.1",
@@ -454,8 +499,8 @@
         "out"
       ],
       "outputs": {
-        "dist": "/nix/store/4kr4l0r3vjbnqldql8ghdvb60hzl4p3m-meson-1.10.1-dist",
-        "out": "/nix/store/sz17kvkzmzkd4cxnzm09pdqh7h8h05br-meson-1.10.1"
+        "dist": "/nix/store/bn296lgddzpsxlrygb9fxdcmphsjq3ml-meson-1.10.1-dist",
+        "out": "/nix/store/bxy6755xiaaf4bxdb723dhz49ny29ch0-meson-1.10.1"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -464,20 +509,19 @@
     {
       "attr_path": "meson",
       "broken": false,
-      "derivation": "/nix/store/7sifhzqjhi25j4g98qj9k6r9vglwddwx-meson-1.10.1.drv",
+      "derivation": "/nix/store/c6l1adrpg5xw2c0zxv4hcsysmff63b7a-meson-1.10.1.drv",
       "description": "Open source, fast and friendly build system made in Python",
       "install_id": "meson",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "meson-1.10.1",
       "pname": "meson",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T06:14:06.398902Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T07:39:49.086687Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "1.10.1",
@@ -485,8 +529,8 @@
         "out"
       ],
       "outputs": {
-        "dist": "/nix/store/yfvsd4xr0gddnhlc600n3yz6gq81k0zc-meson-1.10.1-dist",
-        "out": "/nix/store/qds74v6m6fky8cpwrgd7jwfy3clga3i9-meson-1.10.1"
+        "dist": "/nix/store/a05vfqksmi73vzdg5nj8cyq956x74mdh-meson-1.10.1-dist",
+        "out": "/nix/store/4gs76qly5m4zfxrpindg20p4q4w1nj1z-meson-1.10.1"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -495,29 +539,27 @@
     {
       "attr_path": "ninja",
       "broken": false,
-      "derivation": "/nix/store/vf3s75h1hh068qf4i6zng5v944hkr2p1-ninja-1.13.2.drv",
+      "derivation": "/nix/store/kfhji619vn47ab3g7r7j1gsljgk180ad-ninja-1.13.2.drv",
       "description": "Small build system with a focus on speed",
       "install_id": "ninja",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "ninja-1.13.2",
       "pname": "ninja",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T04:40:26.428661Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T06:03:57.212941Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "1.13.2",
       "outputs_to_install": [
-        "out",
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/3cv0qck5af0b27sd6f18brhdmhgq0y0g-ninja-1.13.2"
+        "out": "/nix/store/rdrrgv5j22i2xxf3sbzhkgkigd3w5515-ninja-1.13.2"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
@@ -526,30 +568,28 @@
     {
       "attr_path": "ninja",
       "broken": false,
-      "derivation": "/nix/store/jlxbdims52bavqzk33mq0xa115w45vb0-ninja-1.13.2.drv",
+      "derivation": "/nix/store/skh3kk7241sqv4gr8d5s9h3fmjz9chnn-ninja-1.13.2.drv",
       "description": "Small build system with a focus on speed",
       "install_id": "ninja",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "ninja-1.13.2",
       "pname": "ninja",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T05:11:26.078581Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T06:35:35.817290Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "1.13.2",
       "outputs_to_install": [
         "out",
-        "out",
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/vpxbw0zilrdajw7sg5izkwkqv9qbchzg-ninja-1.13.2"
+        "out": "/nix/store/wvmz01zs5j2xlz6872sc34zw0yyb05al-ninja-1.13.2"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
@@ -558,29 +598,27 @@
     {
       "attr_path": "ninja",
       "broken": false,
-      "derivation": "/nix/store/5k3cqgcqxywazrw190clapxjfjndczll-ninja-1.13.2.drv",
+      "derivation": "/nix/store/ai24nv0a5451k2kag5ca3qn5f1np8vxi-ninja-1.13.2.drv",
       "description": "Small build system with a focus on speed",
       "install_id": "ninja",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "ninja-1.13.2",
       "pname": "ninja",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T05:40:04.110625Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T07:05:31.926444Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "1.13.2",
       "outputs_to_install": [
-        "out",
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/37jsw6q65pg1nz480rfw532j0bbh5a70-ninja-1.13.2"
+        "out": "/nix/store/2qr9dfjc0ykkw5g6r3njx4mgyjaimw4w-ninja-1.13.2"
       },
       "system": "x86_64-darwin",
       "group": "toplevel",
@@ -589,30 +627,28 @@
     {
       "attr_path": "ninja",
       "broken": false,
-      "derivation": "/nix/store/cqdf6y4rkp4k25xcq81d4wm37sxkinj7-ninja-1.13.2.drv",
+      "derivation": "/nix/store/hglz6nmad76xjgddrwfvdpjm6wjzx5v9-ninja-1.13.2.drv",
       "description": "Small build system with a focus on speed",
       "install_id": "ninja",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=80bdc1e5ce51f56b19791b52b2901187931f5353",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=4c1018dae018162ec878d42fec712642d214fdfa",
       "name": "ninja-1.13.2",
       "pname": "ninja",
-      "rev": "80bdc1e5ce51f56b19791b52b2901187931f5353",
-      "rev_count": 958232,
-      "rev_date": "2026-03-04T11:34:51Z",
-      "scrape_date": "2026-03-06T06:14:09.084881Z",
+      "rev": "4c1018dae018162ec878d42fec712642d214fdfa",
+      "rev_count": 977467,
+      "rev_date": "2026-04-09T04:48:10Z",
+      "scrape_date": "2026-04-11T07:39:51.865726Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "unstable"
       ],
       "unfree": false,
       "version": "1.13.2",
       "outputs_to_install": [
         "out",
-        "out",
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/4siii6hvzs9ymbq37k04vcpx6xnybz21-ninja-1.13.2"
+        "out": "/nix/store/dfcn9xjmbsf8hlj2l2vfrl67d84ylczf-ninja-1.13.2"
       },
       "system": "x86_64-linux",
       "group": "toplevel",

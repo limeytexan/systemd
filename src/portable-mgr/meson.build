@@ -14,7 +14,10 @@ psm_c_args = []
 if host_machine.system() == 'darwin'
   psm_c_args += ['-DPSM_BUILD_TARGET="darwin"']
 elif host_machine.system() == 'linux'
-  psm_c_args += ['-DPSM_BUILD_TARGET="linux"']
+  # _GNU_SOURCE must be a compiler flag, not a #define in a header, because
+  # some .c files include system headers before psm.h and glibc's include
+  # guards prevent re-processing once _GNU_SOURCE is defined late.
+  psm_c_args += ['-DPSM_BUILD_TARGET="linux"', '-D_GNU_SOURCE']
 else
   psm_c_args += ['-DPSM_BUILD_TARGET="' + host_machine.system() + '"']
 endif
