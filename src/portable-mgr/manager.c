@@ -586,6 +586,7 @@ static int unit_start_service(Unit *u) {
 static void unit_process_exited(EventLoop *el, pid_t pid, int status, void *userdata) {
         Unit *u = userdata;
         (void)el;
+        (void)pid;
 
         int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) :
                         WIFSIGNALED(status) ? -WTERMSIG(status) : -1;
@@ -834,7 +835,11 @@ int manager_enable_unit(Manager *m, const char *name, bool *changed, char *errbu
                 }
 
                 char link_path[4096];
-                snprintf(link_path, sizeof(link_path), "%s/%s", wants_dir, name);
+                int lp_n = snprintf(link_path, sizeof(link_path), "%s/%s", wants_dir, name);
+                if (lp_n < 0 || (size_t)lp_n >= sizeof(link_path)) {
+                        if (errbuf) snprintf(errbuf, errsz, "Path too long: %s/%s", wants_dir, name);
+                        return -ENAMETOOLONG;
+                }
 
                 if (access(link_path, F_OK) == 0) continue; /* Already enabled */
 
@@ -862,6 +867,8 @@ int manager_enable_unit(Manager *m, const char *name, bool *changed, char *errbu
 int manager_disable_unit(Manager *m, const char *name, bool *changed, char *errbuf, size_t errsz) {
         if (changed) *changed = false;
         (void)m;
+        (void)errbuf;
+        (void)errsz;
 
         _cleanup_free_ char *config = psm_config_dir();
 
@@ -877,7 +884,8 @@ int manager_disable_unit(Manager *m, const char *name, bool *changed, char *errb
                 if (de->d_name[0] == '.') continue;
 
                 char link[4096];
-                snprintf(link, sizeof(link), "%s/%s/%s", base, de->d_name, name);
+                int lk_n = snprintf(link, sizeof(link), "%s/%s/%s", base, de->d_name, name);
+                if (lk_n < 0 || (size_t)lk_n >= sizeof(link)) continue;
                 if (unlink(link) == 0) {
                         if (changed) *changed = true;
                         log_info("Disabled %s", link);

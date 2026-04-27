@@ -90,20 +90,6 @@ static uint64_t parse_time_arg(const char *s) {
 
 /* ---- Display ---- */
 
-static const char *priority_name(int p) {
-        switch (p) {
-        case LOG_EMERG:   return "emerg";
-        case LOG_ALERT:   return "alert";
-        case LOG_CRIT:    return "crit";
-        case LOG_ERR:     return "err";
-        case LOG_WARNING: return "warning";
-        case LOG_NOTICE:  return "notice";
-        case LOG_INFO:    return "info";
-        case LOG_DEBUG:   return "debug";
-        default:          return "?";
-        }
-}
-
 static const char *priority_color(int p) {
         if (p <= LOG_ERR)     return "\033[31m";  /* red */
         if (p <= LOG_WARNING) return "\033[33m";  /* yellow */
