@@ -91,6 +91,8 @@ int manager_new(Manager **ret) {
         _cleanup_free_ char *jdir = journal_dir();
         journal_open(&m->journal, jdir);
 
+        log_debug("Unit search path: %s", m->unit_search_path);
+
         *ret = m;
         return 0;
 }
@@ -164,11 +166,14 @@ int manager_load_unit(Manager *m, const char *name, Unit **ret) {
         /* Try to find and parse the unit file */
         char path[4096];
         if (find_unit_file(m->unit_search_path, name, path, sizeof(path))) {
+                log_debug("Loading %s from %s", name, path);
                 int r = parse_unit_file(path, &u->config);
                 if (r < 0) {
                         log_warning("Failed to parse %s: %s", path, strerror(-r));
                         /* Continue with empty config */
                 }
+        } else {
+                log_debug("No unit file found for %s (synthetic/target)", name);
         }
 
         /* Targets don't need a file */
@@ -202,6 +207,7 @@ int manager_load_all(Manager *m) {
         while (dir_path) {
                 DIR *d = opendir(dir_path);
                 if (d) {
+                        log_debug("Scanning unit directory: %s", dir_path);
                         struct dirent *de;
                         while ((de = readdir(d))) {
                                 if (de->d_name[0] == '.') continue;

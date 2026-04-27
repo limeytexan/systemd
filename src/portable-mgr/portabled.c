@@ -21,18 +21,17 @@ static void print_usage(const char *argv0) {
                 "\n"
                 "Options:\n"
                 "  --user              Run as user service manager (default)\n"
+                "  --debug             Enable debug logging (alias for --log-level=debug)\n"
                 "  --log-level=LEVEL   Set log level (debug/info/notice/warning/error)\n"
                 "  --log-target=TARGET Log target (console/journal/auto)\n"
                 "  --no-daemon         Don't daemonize (stay in foreground)\n"
                 "  --version           Show version and exit\n"
                 "  -h, --help          Show this help\n"
                 "\n"
-                "Unit files are searched in:\n"
-                "  $XDG_CONFIG_HOME/systemd/user/\n"
-                "  $XDG_DATA_HOME/systemd/user/\n"
-                "  /etc/systemd/user/\n"
-                "  /usr/local/lib/systemd/user/\n"
-                "  /usr/lib/systemd/user/\n",
+                "Unit files are searched in (in order):\n"
+                "  $XDG_CONFIG_HOME/systemd/user/   (default: ~/.config/systemd/user/)\n"
+                "  $XDG_DATA_HOME/systemd/user/     (default: ~/.local/share/systemd/user/)\n"
+                "  $XDG_RUNTIME_DIR/systemd/user/   (transient/runtime units)\n",
                 argv0);
 }
 
@@ -67,6 +66,7 @@ int main(int argc, char *argv[]) {
         static const struct option opts[] = {
                 { "user",       no_argument,       NULL, 'U' },
                 { "system",     no_argument,       NULL, 'S' },
+                { "debug",      no_argument,       NULL, 'D' },
                 { "log-level",  required_argument, NULL, 'l' },
                 { "log-target", required_argument, NULL, 't' },
                 { "no-daemon",  no_argument,       NULL, 'n' },
@@ -81,6 +81,7 @@ int main(int argc, char *argv[]) {
                 switch (c) {
                 case 'U': user_mode = true;  break;
                 case 'S': user_mode = false; break;
+                case 'D': log_level_str = "debug"; break;
                 case 'l': log_level_str = optarg; break;
                 case 't': /* log target - ignored for now */ break;
                 case 'n': daemonize = false; break;
