@@ -38,6 +38,10 @@ struct Unit {
         Unit          **deps_wants;
         int             n_deps_wants;
 
+        /* Journal capture pipes (read ends; -1 when not active) */
+        int             stdout_fd;
+        int             stderr_fd;
+
         /* Flags */
         bool            enabled;          /* Symlink exists in .wants */
         bool            pinned;           /* Explicitly started; don't auto-stop */

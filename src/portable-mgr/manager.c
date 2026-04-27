@@ -26,14 +26,24 @@ static Unit *unit_new(const char *name, Manager *m) {
         if (!u) return NULL;
         u->name = strdup(name);
         if (!u->name) { free(u); return NULL; }
-        u->type    = unit_type_from_name(name);
-        u->state   = UNIT_INACTIVE;
-        u->manager = m;
+        u->type      = unit_type_from_name(name);
+        u->state     = UNIT_INACTIVE;
+        u->stdout_fd = -1;
+        u->stderr_fd = -1;
+        u->manager   = m;
         return u;
 }
 
 static void unit_free(Unit *u) {
         if (!u) return;
+        if (u->stdout_fd >= 0) {
+                event_loop_unwatch_fd(u->manager->event, u->stdout_fd);
+                close(u->stdout_fd);
+        }
+        if (u->stderr_fd >= 0) {
+                event_loop_unwatch_fd(u->manager->event, u->stderr_fd);
+                close(u->stderr_fd);
+        }
         free(u->name);
         free(u->state_msg);
         unit_file_config_free(u->config);
@@ -405,11 +415,11 @@ static void free_env(char **env) {
         free(env);
 }
 
-/* Redirect one fd based on StandardOutput/StandardError config value */
+/* Redirect one fd based on StandardOutput/StandardError config value (child side, non-journal) */
 static void setup_one_fd(int target_fd, const char *cfg) {
         if (!cfg || streq(cfg, "inherit") || streq(cfg, "journal") ||
             streq(cfg, "syslog") || streq(cfg, "kmsg"))
-                return; /* keep as-is */
+                return; /* keep as-is (journal handled via pipe before fork) */
         if (streq(cfg, "null")) {
                 int fd = open("/dev/null", O_RDWR);
                 if (fd >= 0) { dup2(fd, target_fd); close(fd); }
@@ -423,21 +433,47 @@ static void setup_one_fd(int target_fd, const char *cfg) {
         }
 }
 
-/* Set up file descriptors for a child process based on StandardOutput/StandardError config */
-static void setup_child_stdio(Unit *u) {
-        const char *out_cfg = u->config ? u->config->service.standard_output : NULL;
-        const char *err_cfg = u->config ? u->config->service.standard_error  : NULL;
+/* Event loop callback: drain a journal capture pipe and write lines to the journal */
+static void unit_journal_pipe_cb(EventLoop *el, int fd, void *userdata) {
+        Unit *u = userdata;
+        char buf[4096];
+        ssize_t n = read(fd, buf, sizeof(buf) - 1);
 
-        /* stdin → /dev/null by default */
-        int null = open("/dev/null", O_RDONLY);
-        if (null >= 0) { dup2(null, STDIN_FILENO); close(null); }
-
-        setup_one_fd(STDOUT_FILENO, out_cfg);
-        setup_one_fd(STDERR_FILENO, err_cfg);
+        if (n > 0) {
+                buf[n] = '\0';
+                /* Journal each newline-delimited line */
+                char *line = buf;
+                char *nl;
+                while ((nl = strchr(line, '\n'))) {
+                        *nl = '\0';
+                        if (nl > line && *(nl - 1) == '\r')
+                                *(nl - 1) = '\0';
+                        if (*line)
+                                journal_write(u->manager->journal, LOG_INFO,
+                                        u->name, u->main_pid, u->name, line);
+                        line = nl + 1;
+                }
+                if (*line) /* partial line with no trailing newline */
+                        journal_write(u->manager->journal, LOG_INFO,
+                                u->name, u->main_pid, u->name, line);
+        } else {
+                /* EOF or error: clean up this pipe end */
+                event_loop_unwatch_fd(el, fd);
+                close(fd);
+                if (u->stdout_fd == fd) u->stdout_fd = -1;
+                if (u->stderr_fd == fd) u->stderr_fd = -1;
+        }
 }
 
-/* Execute a single ExecXxx command; returns child PID or <0 on error */
-static pid_t exec_command(Unit *u, const char *exec_str, bool *ignore_failure) {
+/*
+ * Execute a single ExecXxx command; returns child PID or <0 on error.
+ * If out_stdout_rd / out_stderr_rd are non-NULL and the unit's config says
+ * StandardOutput/Error=journal, a pipe is created: the write end goes to the
+ * child and the read end is returned via the out parameter.  The caller is
+ * responsible for registering the read end with the event loop.
+ */
+static pid_t exec_command(Unit *u, const char *exec_str, bool *ignore_failure,
+                           int *out_stdout_rd, int *out_stderr_rd) {
         bool ig = false;
         char **argv = parse_exec_argv(exec_str, &ig);
         if (ignore_failure) *ignore_failure = ig;
@@ -447,13 +483,31 @@ static pid_t exec_command(Unit *u, const char *exec_str, bool *ignore_failure) {
                 return -EINVAL;
         }
 
+        const char *out_cfg = u->config ? u->config->service.standard_output : NULL;
+        const char *err_cfg = u->config ? u->config->service.standard_error  : NULL;
+
+        int stdout_pipe[2] = {-1, -1};
+        int stderr_pipe[2] = {-1, -1};
+
+        if (out_stdout_rd && out_cfg && streq(out_cfg, "journal")) {
+                if (pipe(stdout_pipe) < 0)
+                        log_warning_unit(u->name, "Failed to create stdout pipe: %s", strerror(errno));
+        }
+        if (out_stderr_rd && err_cfg && streq(err_cfg, "journal")) {
+                if (pipe(stderr_pipe) < 0)
+                        log_warning_unit(u->name, "Failed to create stderr pipe: %s", strerror(errno));
+        }
+
         char **env = build_env(u);
 
         pid_t pid = fork();
         if (pid < 0) {
+                int saved = errno;
+                if (stdout_pipe[0] >= 0) { close(stdout_pipe[0]); close(stdout_pipe[1]); }
+                if (stderr_pipe[0] >= 0) { close(stderr_pipe[0]); close(stderr_pipe[1]); }
                 free_argv(argv);
                 free_env(env);
-                return -errno;
+                return -saved;
         }
 
         if (pid == 0) {
@@ -462,8 +516,27 @@ static pid_t exec_command(Unit *u, const char *exec_str, bool *ignore_failure) {
                 /* Become process group leader */
                 setsid();
 
-                /* Set up stdio */
-                if (u->config) setup_child_stdio(u);
+                /* stdin → /dev/null */
+                int null = open("/dev/null", O_RDONLY);
+                if (null >= 0) { dup2(null, STDIN_FILENO); close(null); }
+
+                /* stdout: pipe write end or fallback to config-driven setup */
+                if (stdout_pipe[1] >= 0) {
+                        dup2(stdout_pipe[1], STDOUT_FILENO);
+                        close(stdout_pipe[0]);
+                        close(stdout_pipe[1]);
+                } else {
+                        setup_one_fd(STDOUT_FILENO, out_cfg);
+                }
+
+                /* stderr: pipe write end or fallback */
+                if (stderr_pipe[1] >= 0) {
+                        dup2(stderr_pipe[1], STDERR_FILENO);
+                        close(stderr_pipe[0]);
+                        close(stderr_pipe[1]);
+                } else {
+                        setup_one_fd(STDERR_FILENO, err_cfg);
+                }
 
                 /* Set working directory */
                 const char *wd = u->config ? u->config->service.working_directory : NULL;
@@ -515,6 +588,20 @@ static pid_t exec_command(Unit *u, const char *exec_str, bool *ignore_failure) {
                 _exit(127);
         }
 
+        /* Parent: close write ends; hand read ends to caller */
+        if (stdout_pipe[1] >= 0) close(stdout_pipe[1]);
+        if (stderr_pipe[1] >= 0) close(stderr_pipe[1]);
+
+        if (out_stdout_rd)
+                *out_stdout_rd = stdout_pipe[0];
+        else if (stdout_pipe[0] >= 0)
+                close(stdout_pipe[0]);
+
+        if (out_stderr_rd)
+                *out_stderr_rd = stderr_pipe[0];
+        else if (stderr_pipe[0] >= 0)
+                close(stderr_pipe[0]);
+
         free_argv(argv);
         free_env(env);
         return pid;
@@ -531,6 +618,18 @@ static int unit_start_service(Unit *u) {
                 return -EINVAL;
         }
 
+        /* Close any capture pipes from a previous run before starting fresh */
+        if (u->stdout_fd >= 0) {
+                event_loop_unwatch_fd(m->event, u->stdout_fd);
+                close(u->stdout_fd);
+                u->stdout_fd = -1;
+        }
+        if (u->stderr_fd >= 0) {
+                event_loop_unwatch_fd(m->event, u->stderr_fd);
+                close(u->stderr_fd);
+                u->stderr_fd = -1;
+        }
+
         unit_set_state(u, UNIT_ACTIVATING, "starting");
 
         journal_writef(m->journal, LOG_INFO, u->name, 0, "psm",
@@ -541,7 +640,7 @@ static int unit_start_service(Unit *u) {
         if (u->config->service.exec_start_pre) {
                 for (char **pre = u->config->service.exec_start_pre; *pre; pre++) {
                         bool ignore = false;
-                        pid_t pid = exec_command(u, *pre, &ignore);
+                        pid_t pid = exec_command(u, *pre, &ignore, NULL, NULL);
                         if (pid < 0) {
                                 if (!ignore) {
                                         unit_set_state(u, UNIT_FAILED, "ExecStartPre failed");
@@ -561,8 +660,10 @@ static int unit_start_service(Unit *u) {
                 }
         }
 
-        /* Start main process */
-        pid_t pid = exec_command(u, u->config->service.exec_start, NULL);
+        /* Start main process, capturing stdout/stderr into the journal via pipes */
+        int stdout_rd = -1, stderr_rd = -1;
+        pid_t pid = exec_command(u, u->config->service.exec_start, NULL,
+                                 &stdout_rd, &stderr_rd);
         if (pid < 0) {
                 log_error_unit(u->name, "Failed to start: %s", strerror(-pid));
                 unit_set_state(u, UNIT_FAILED, strerror(-pid));
@@ -571,6 +672,16 @@ static int unit_start_service(Unit *u) {
 
         u->main_pid = pid;
         u->stopping = false;
+
+        /* Register journal capture pipe read ends with the event loop */
+        if (stdout_rd >= 0) {
+                u->stdout_fd = stdout_rd;
+                event_loop_watch_fd(m->event, stdout_rd, false, unit_journal_pipe_cb, u);
+        }
+        if (stderr_rd >= 0) {
+                u->stderr_fd = stderr_rd;
+                event_loop_watch_fd(m->event, stderr_rd, false, unit_journal_pipe_cb, u);
+        }
 
         /* Watch the process */
         event_loop_watch_pid(m->event, pid, unit_process_exited, u);
@@ -739,7 +850,7 @@ int manager_stop_unit(Manager *m, const char *name, char *errbuf, size_t errsz) 
                 kill(u->main_pid, sig);
                 /* Process exit handled by event loop callback */
         } else if (u->config && u->config->service.exec_stop) {
-                pid_t pid = exec_command(u, u->config->service.exec_stop, NULL);
+                pid_t pid = exec_command(u, u->config->service.exec_stop, NULL, NULL, NULL);
                 if (pid > 0) {
                         int status;
                         waitpid(pid, &status, 0);
@@ -791,7 +902,7 @@ int manager_reload_unit(Manager *m, const char *name, char *errbuf, size_t errsz
                 if (errbuf) snprintf(errbuf, errsz, "Unit '%s' has no ExecReload", name);
                 return -ENOTSUP;
         }
-        pid_t pid = exec_command(u, u->config->service.exec_reload, NULL);
+        pid_t pid = exec_command(u, u->config->service.exec_reload, NULL, NULL, NULL);
         if (pid < 0) return pid;
         int status;
         waitpid(pid, &status, 0);
