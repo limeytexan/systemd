@@ -17,7 +17,7 @@ version = "v260-rc2-81"
 sandbox = "pure"
 command = """
   oslc="$(uname | tr '[A-Z]' '[a-z]')"
-  meson setup --reconfigure build-$oslc \
+  meson setup build-$oslc \
     --prefix=$out \
     -Dconfigfiledir=$out/etc \
     -Ddocdir=$out \
@@ -25,4 +25,8 @@ command = """
 
   # Build + install
   ninja -C build-$oslc install
+
+  # Exclude meson-private/ from build cache: it embeds absolute paths (scratch_dir
+  # in coredata.dat) that become stale across Nix sandbox runs.
+  rm -rf "build-$oslc/meson-private"
 """

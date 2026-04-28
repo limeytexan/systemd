@@ -34,7 +34,7 @@
     "options": {},
     "build": {
       "systemd-portable": {
-        "command": "  oslc=\"$(uname | tr '[A-Z]' '[a-z]')\"\n  meson setup --reconfigure build-$oslc --prefix=$out -Dconfigfiledir=$out/etc -Ddocdir=$out -Dportable-manager=true\n\n  # Build + install\n  ninja -C build-$oslc install\n",
+        "command": "  oslc=\"$(uname | tr '[A-Z]' '[a-z]')\"\n  meson setup build-$oslc --prefix=$out -Dconfigfiledir=$out/etc -Ddocdir=$out -Dportable-manager=true\n\n  # Build + install\n  ninja -C build-$oslc install\n\n  # Exclude meson-private/ from build cache: it embeds absolute paths (scratch_dir\n  # in coredata.dat) that become stale across Nix sandbox runs.\n  rm -rf \"build-$oslc/meson-private\"\n",
         "sandbox": "pure",
         "version": "v260-rc2-81",
         "description": "Portable adaptation of systemd for orchestrating services in user space"
