@@ -65,9 +65,9 @@ static EventLoop *g_event_loop = NULL;
 static void psm_signal_handler(int signo) {
         if (!g_event_loop)
                 return;
-        /* write() is async-signal-safe */
+        /* write() is async-signal-safe; cannot handle errors in a signal handler */
         unsigned char s = (unsigned char)(signo & 0xff);
-        (void)write(g_event_loop->signal_pipe[1], &s, 1);
+        ssize_t _ignored __attribute__((unused)) = write(g_event_loop->signal_pipe[1], &s, 1);
 }
 
 /* ---- Lifecycle ---- */

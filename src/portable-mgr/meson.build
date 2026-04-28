@@ -17,7 +17,10 @@ elif host_machine.system() == 'linux'
   # _GNU_SOURCE must be a compiler flag, not a #define in a header, because
   # some .c files include system headers before psm.h and glibc's include
   # guards prevent re-processing once _GNU_SOURCE is defined late.
-  psm_c_args += ['-DPSM_BUILD_TARGET="linux"', '-D_GNU_SOURCE']
+  # -O2: required to satisfy _FORTIFY_SOURCE in the Nix glibc headers, which
+  # emit a #warning if optimization is not enabled (Nix sets _FORTIFY_SOURCE
+  # unconditionally in the pure sandbox via its hardened glibc wrapper).
+  psm_c_args += ['-DPSM_BUILD_TARGET="linux"', '-D_GNU_SOURCE', '-O2']
 else
   psm_c_args += ['-DPSM_BUILD_TARGET="' + host_machine.system() + '"']
 endif
