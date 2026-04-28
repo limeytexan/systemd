@@ -14,7 +14,7 @@ gperf.systems = [ "x86_64-linux", "aarch64-linux" ]
 [build.systemd-portable]
 description = "Portable adaptation of systemd for orchestrating services in user space"
 version = "v260-rc2-81"
-# sandbox = "pure"
+sandbox = "pure"
 command = """
   oslc="$(uname | tr '[A-Z]' '[a-z]')"
   meson setup --reconfigure build-$oslc \

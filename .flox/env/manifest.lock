@@ -35,6 +35,7 @@
     "build": {
       "systemd-portable": {
         "command": "  oslc=\"$(uname | tr '[A-Z]' '[a-z]')\"\n  meson setup --reconfigure build-$oslc --prefix=$out -Dconfigfiledir=$out/etc -Ddocdir=$out -Dportable-manager=true\n\n  # Build + install\n  ninja -C build-$oslc install\n",
+        "sandbox": "pure",
         "version": "v260-rc2-81",
         "description": "Portable adaptation of systemd for orchestrating services in user space"
       }
