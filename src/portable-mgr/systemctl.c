@@ -22,9 +22,14 @@
  *   --version            Print version
  */
 
+#include <ctype.h>
+#include <dirent.h>
 #include <fnmatch.h>
 #include <getopt.h>
 #include <time.h>
+#ifdef __APPLE__
+#  include <sys/sysctl.h>
+#endif
 #include "ipc.h"
 #include "journal.h"
 
@@ -303,6 +308,149 @@ static int cmd_reload(int argc, char *argv[]) {
         return ret;
 }
 
+/* ---- Process tree display ---- */
+
+#define PSM_MAX_PROCS 512
+
+typedef struct {
+        pid_t pid;
+        pid_t ppid;
+        char  cmd[128];
+} ProcEntry;
+
+#ifdef __APPLE__
+static void macos_get_cmdline(pid_t pid, char *buf, size_t sz) {
+        int mib[] = { CTL_KERN, KERN_PROCARGS2, (int)pid };
+        char tmp[4096];
+        size_t tmplen = sizeof(tmp);
+        buf[0] = '\0';
+        if (sysctl(mib, 3, tmp, &tmplen, NULL, 0) < 0)
+                return;
+        if (tmplen < sizeof(int))
+                return;
+        int argc;
+        memcpy(&argc, tmp, sizeof(int));
+        const char *p = tmp + sizeof(int);
+        const char *end = tmp + tmplen;
+        while (p < end && *p) p++;   /* skip exec path */
+        while (p < end && !*p) p++;  /* skip NUL padding */
+        /* Collect argv[0..argc-1] joined with spaces */
+        size_t out = 0;
+        for (int i = 0; i < argc && p < end; i++) {
+                if (i > 0 && out + 1 < sz) buf[out++] = ' ';
+                while (p < end && *p && out + 1 < sz)
+                        buf[out++] = *p++;
+                while (p < end && !*p) p++;
+        }
+        buf[out] = '\0';
+}
+#endif
+
+static int gather_proc_entries(ProcEntry *procs, int max) {
+#if defined(__linux__)
+        DIR *d = opendir("/proc");
+        if (!d) return 0;
+        int n = 0;
+        struct dirent *de;
+        while ((de = readdir(d)) && n < max) {
+                if (!isdigit((unsigned char)de->d_name[0])) continue;
+                pid_t pid = (pid_t)atoi(de->d_name);
+
+                char path[64];
+                snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+                FILE *sf = fopen(path, "r");
+                if (!sf) continue;
+                int tmp_pid; char comm[64] = ""; char state; pid_t ppid = 0;
+                int r = fscanf(sf, "%d (%63[^)]) %c %d", &tmp_pid, comm, &state, (int *)&ppid);
+                fclose(sf);
+                if (r < 4) continue;
+
+                snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+                FILE *cf = fopen(path, "r");
+                char cmd[128] = "";
+                if (cf) {
+                        size_t nr = fread(cmd, 1, sizeof(cmd) - 1, cf);
+                        fclose(cf);
+                        cmd[nr] = '\0';
+                        for (size_t k = 0; k + 1 < nr; k++)
+                                if (cmd[k] == '\0') cmd[k] = ' ';
+                        while (nr > 0 && cmd[nr - 1] == ' ') cmd[--nr] = '\0';
+                }
+                if (!cmd[0])
+                        snprintf(cmd, sizeof(cmd), "[%s]", comm);
+
+                procs[n].pid  = pid;
+                procs[n].ppid = ppid;
+                memcpy(procs[n].cmd, cmd, sizeof(procs[n].cmd));
+                n++;
+        }
+        closedir(d);
+        return n;
+
+#elif defined(__APPLE__)
+        int mib[] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0 };
+        size_t len = 0;
+        if (sysctl(mib, 4, NULL, &len, NULL, 0) < 0) return 0;
+        struct kinfo_proc *kp = malloc(len);
+        if (!kp) return 0;
+        if (sysctl(mib, 4, kp, &len, NULL, 0) < 0) { free(kp); return 0; }
+
+        int count = (int)(len / sizeof(struct kinfo_proc));
+        int n = 0;
+        for (int i = 0; i < count && n < max; i++) {
+                pid_t pid  = kp[i].kp_proc.p_pid;
+                pid_t ppid = kp[i].kp_eproc.e_ppid;
+                if (pid == 0) continue;
+                procs[n].pid  = pid;
+                procs[n].ppid = ppid;
+                macos_get_cmdline(pid, procs[n].cmd, sizeof(procs[n].cmd));
+                if (!procs[n].cmd[0])
+                        snprintf(procs[n].cmd, sizeof(procs[n].cmd), "%s", kp[i].kp_proc.p_comm);
+                n++;
+        }
+        free(kp);
+        return n;
+
+#else
+        (void)procs; (void)max;
+        return 0;
+#endif
+}
+
+/* Recursively print children of `root` with tree-drawing characters.
+ * `indent` is the prefix to print before the branch character on each line. */
+static void print_proc_subtree(ProcEntry *procs, int n, pid_t root,
+                                const char *indent) {
+        pid_t children[64];
+        int nc = 0;
+        for (int i = 0; i < n && nc < 64; i++)
+                if (procs[i].ppid == root && procs[i].pid != root)
+                        children[nc++] = procs[i].pid;
+
+        /* Sort by pid for stable, deterministic output */
+        for (int i = 0; i < nc - 1; i++)
+                for (int j = i + 1; j < nc; j++)
+                        if (children[j] < children[i]) {
+                                pid_t t = children[i]; children[i] = children[j]; children[j] = t;
+                        }
+
+        for (int i = 0; i < nc; i++) {
+                bool last = (i == nc - 1);
+                const char *cmd = "";
+                for (int j = 0; j < n; j++)
+                        if (procs[j].pid == children[i]) { cmd = procs[j].cmd; break; }
+
+                printf("%s%s%d %s\n", indent,
+                        last ? "\xe2\x94\x94\xe2\x94\x80" : "\xe2\x94\x9c\xe2\x94\x80",
+                        (int)children[i], cmd);
+
+                char new_indent[256];
+                snprintf(new_indent, sizeof(new_indent), "%s%s", indent,
+                        last ? "  " : "\xe2\x94\x82 ");
+                print_proc_subtree(procs, n, children[i], new_indent);
+        }
+}
+
 static int cmd_status(int argc, char *argv[]) {
         int ret = 0;
 
@@ -449,6 +597,20 @@ static int cmd_status(int argc, char *argv[]) {
                                 printf("   Main PID: %lld (%s)\n", pid, exe_name);
                         else
                                 printf("   Main PID: %lld\n", pid);
+
+                        /* Process tree, indented to align under the PID value */
+                        ProcEntry *pt = malloc(PSM_MAX_PROCS * sizeof(ProcEntry));
+                        int np = pt ? gather_proc_entries(pt, PSM_MAX_PROCS) : 0;
+                        if (np > 0) {
+                                const char *main_cmd = "";
+                                for (int pi = 0; pi < np; pi++)
+                                        if (pt[pi].pid == (pid_t)pid) { main_cmd = pt[pi].cmd; break; }
+                                /* Root node: "└─<pid> <cmdline>" */
+                                printf("             \xe2\x94\x94\xe2\x94\x80%lld %s\n", pid, main_cmd);
+                                /* Children indented by 13 spaces + "  " (last-child continuation) */
+                                print_proc_subtree(pt, np, (pid_t)pid, "               ");
+                        }
+                        free(pt);
                 }
                 if (restarts > 0)
                         printf("   Restarts: %lld\n", restarts);
