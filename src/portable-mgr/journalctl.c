@@ -274,7 +274,29 @@ int main(int argc, char *argv[]) {
         int c;
         while ((c = getopt_long(argc, argv, "u:fn:p:o:rqh", opts, NULL)) != -1) {
                 switch (c) {
-                case 'u': opt_unit       = optarg; break;
+                case 'u': {
+                        /* Append .service if no unit type suffix, matching systemctl behaviour */
+                        static const char *const sfx[] = {
+                                ".service", ".socket", ".target", ".path", ".timer",
+                                ".mount", ".automount", ".swap", ".slice", ".scope", ".device",
+                                NULL
+                        };
+                        bool has_sfx = false;
+                        size_t olen = strlen(optarg);
+                        for (const char *const *s = sfx; *s && !has_sfx; s++) {
+                                size_t slen = strlen(*s);
+                                if (olen >= slen && memcmp(optarg + olen - slen, *s, slen) == 0)
+                                        has_sfx = true;
+                        }
+                        if (has_sfx) {
+                                opt_unit = optarg;
+                        } else {
+                                static char mangled[256];
+                                snprintf(mangled, sizeof(mangled), "%s.service", optarg);
+                                opt_unit = mangled;
+                        }
+                        break;
+                }
                 case 'f': opt_follow     = true;   break;
                 case 'n':
                         if (streq(optarg, "all"))
