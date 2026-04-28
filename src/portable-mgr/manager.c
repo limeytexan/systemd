@@ -1118,15 +1118,62 @@ int manager_unit_status_json(Manager *m, const char *name, char *buf, size_t sz)
         const char *active_state = unit_active_state_to_string(u->state);
         const char *sub_state = u->state_msg ? u->state_msg : active_state;
 
-        /* Escape description for JSON */
+        /* JSON string escaper (replaces " with \") */
+#define JSON_ESC(dst, dsz, src) do { \
+        size_t _di = 0; \
+        for (const char *_p = (src); *_p && _di + 3 < (dsz); _p++) { \
+                if (*_p == '"') { (dst)[_di++] = '\\'; (dst)[_di++] = '"'; } \
+                else (dst)[_di++] = *_p; \
+        } \
+        (dst)[_di] = '\0'; \
+} while (0)
+
         char desc_esc[512];
-        /* Simple escaping: replace " with \\" */
-        size_t di = 0;
-        for (const char *p = desc; *p && di + 3 < sizeof(desc_esc); p++) {
-                if (*p == '"') { desc_esc[di++] = '\\'; desc_esc[di++] = '"'; }
-                else desc_esc[di++] = *p;
+        JSON_ESC(desc_esc, sizeof(desc_esc), desc);
+
+        /* exe_name: Linux reads /proc/<pid>/comm; both platforms fall back to ExecStart basename */
+        char exe_name[256] = "";
+#ifdef __linux__
+        if (u->main_pid > 0) {
+                char comm_path[64];
+                snprintf(comm_path, sizeof(comm_path), "/proc/%d/comm", (int)u->main_pid);
+                int cfd = open(comm_path, O_RDONLY | O_CLOEXEC);
+                if (cfd >= 0) {
+                        ssize_t cn = read(cfd, exe_name, sizeof(exe_name) - 1);
+                        close(cfd);
+                        if (cn > 0) {
+                                exe_name[cn] = '\0';
+                                if (exe_name[cn - 1] == '\n')
+                                        exe_name[cn - 1] = '\0';
+                        }
+                }
         }
-        desc_esc[di] = '\0';
+#endif
+        if (!exe_name[0] && u->config && u->config->service.exec_start) {
+                const char *p = u->config->service.exec_start;
+                while (*p == '@' || *p == '-' || *p == '+' || *p == '!')
+                        p++;
+                const char *end = p;
+                while (*end && *end != ' ')
+                        end++;
+                const char *slash = NULL;
+                for (const char *q = p; q < end; q++)
+                        if (*q == '/')
+                                slash = q;
+                const char *base = slash ? slash + 1 : p;
+                size_t blen = (size_t)(end - base);
+                if (blen >= sizeof(exe_name))
+                        blen = sizeof(exe_name) - 1;
+                memcpy(exe_name, base, blen);
+                exe_name[blen] = '\0';
+        }
+        char exe_esc[256] = "";
+        JSON_ESC(exe_esc, sizeof(exe_esc), exe_name);
+
+        const char *docs_raw = (u->config && u->config->unit.documentation)
+                ? u->config->unit.documentation : "";
+        char docs_esc[512] = "";
+        JSON_ESC(docs_esc, sizeof(docs_esc), docs_raw);
 
         snprintf(buf, sz,
                 "{\"ok\":true,"
@@ -1139,7 +1186,9 @@ int manager_unit_status_json(Manager *m, const char *name, char *buf, size_t sz)
                 "\"active_since\":%"PRIu64","
                 "\"restart_count\":%d,"
                 "\"enabled\":%s,"
-                "\"path\":\"%s\"}",
+                "\"path\":\"%s\","
+                "\"exe_name\":\"%s\","
+                "\"docs\":\"%s\"}",
                 u->name,
                 desc_esc,
                 load_state,
@@ -1149,7 +1198,11 @@ int manager_unit_status_json(Manager *m, const char *name, char *buf, size_t sz)
                 u->active_enter_usec,
                 u->restart_count,
                 u->enabled ? "true" : "false",
-                (u->config && u->config->path) ? u->config->path : "");
+                (u->config && u->config->path) ? u->config->path : "",
+                exe_esc,
+                docs_esc);
+
+#undef JSON_ESC
 
         return 0;
 }

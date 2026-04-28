@@ -371,13 +371,15 @@ static int cmd_status(int argc, char *argv[]) {
                         continue;
                 }
 
-                _cleanup_free_ char *name   = json_get_str(resp, "name");
-                _cleanup_free_ char *desc   = json_get_str(resp, "description");
-                _cleanup_free_ char *load   = json_get_str(resp, "load_state");
-                _cleanup_free_ char *active = json_get_str(resp, "active_state");
-                _cleanup_free_ char *sub    = json_get_str(resp, "sub_state");
-                _cleanup_free_ char *path   = json_get_str(resp, "path");
+                _cleanup_free_ char *name     = json_get_str(resp, "name");
+                _cleanup_free_ char *desc     = json_get_str(resp, "description");
+                _cleanup_free_ char *load     = json_get_str(resp, "load_state");
+                _cleanup_free_ char *active   = json_get_str(resp, "active_state");
+                _cleanup_free_ char *sub      = json_get_str(resp, "sub_state");
+                _cleanup_free_ char *path     = json_get_str(resp, "path");
                 _cleanup_free_ char *enabled_str = json_get_str(resp, "enabled");
+                _cleanup_free_ char *exe_name = json_get_str(resp, "exe_name");
+                _cleanup_free_ char *docs     = json_get_str(resp, "docs");
                 long long pid       = json_get_int(resp, "main_pid");
                 long long since_raw = json_get_int(resp, "active_since");
                 long long restarts  = json_get_int(resp, "restart_count");
@@ -424,8 +426,30 @@ static int cmd_status(int argc, char *argv[]) {
                         printf(" since %s; %s", ts_buf, dur_buf);
                 printf("\n");
 
-                if (pid > 0)
-                        printf("   Main PID: %lld\n", pid);
+                if (docs && docs[0]) {
+                        /* Support space-separated list of doc URIs (emit one per line) */
+                        printf("       Docs: ");
+                        bool first = true;
+                        const char *dp = docs;
+                        while (*dp) {
+                                while (*dp == ' ') dp++;
+                                if (!*dp) break;
+                                const char *end = dp;
+                                while (*end && *end != ' ') end++;
+                                if (!first)
+                                        printf("             ");
+                                printf("%.*s\n", (int)(end - dp), dp);
+                                first = false;
+                                dp = end;
+                        }
+                }
+
+                if (pid > 0) {
+                        if (exe_name && exe_name[0])
+                                printf("   Main PID: %lld (%s)\n", pid, exe_name);
+                        else
+                                printf("   Main PID: %lld\n", pid);
+                }
                 if (restarts > 0)
                         printf("   Restarts: %lld\n", restarts);
 
