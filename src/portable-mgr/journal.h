@@ -60,7 +60,7 @@ int  journal_reader_fileno(JournalReader *r);
 void journal_reader_clearerr(JournalReader *r);
 /* Seek to entries after this realtime timestamp (usec) */
 int  journal_reader_seek_realtime(JournalReader *r, uint64_t usec);
-/* Jump to last N entries */
+/* Jump to last N entries; returns 1 if positioned at journal beginning, 0 otherwise */
 int  journal_reader_seek_tail(JournalReader *r, int n);
 
 void journal_entry_clear(JournalEntry *e);

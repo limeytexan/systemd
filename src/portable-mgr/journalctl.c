@@ -180,8 +180,9 @@ static bool entry_matches(const JournalEntry *e) {
 
 /* ---- Follow mode (tail -f equivalent) ---- */
 
-static void follow_journal(JournalReader *r) {
-        printf("-- Journal begin --\n");
+static void follow_journal(JournalReader *r, bool at_journal_begin) {
+        if (at_journal_begin)
+                printf("-- Journal begin --\n");
         fflush(stdout);
 
         for (;;) {
@@ -366,14 +367,15 @@ int main(int argc, char *argv[]) {
         }
 
         /* Seek if requested */
+        bool at_journal_begin = false;
         if (opt_since > 0)
                 journal_reader_seek_realtime(r, opt_since);
         else if (opt_lines < INT_MAX && opt_lines > 0)
-                journal_reader_seek_tail(r, opt_lines);
+                at_journal_begin = journal_reader_seek_tail(r, opt_lines) == 1;
 
         if (opt_follow) {
                 /* For follow mode, first show existing entries then tail */
-                follow_journal(r);
+                follow_journal(r, at_journal_begin);
         } else {
                 /* Collect entries (respect reverse flag) */
                 JournalEntry *entries = NULL;

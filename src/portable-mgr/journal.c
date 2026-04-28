@@ -391,7 +391,7 @@ int journal_reader_seek_tail(JournalReader *r, int n) {
         int skip = total - n;
         if (skip <= 0) {
                 rewind(r->f);
-                return 0;
+                return 1; /* at journal beginning */
         }
         int cnt = 0;
         while (fgets(line, sizeof(line), r->f)) {
