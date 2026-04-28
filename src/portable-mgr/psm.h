@@ -123,8 +123,12 @@ typedef enum KillMode {
 #define strprefix(s,p)  (strncmp((s),(p),strlen(p)) == 0)
 #define isempty(s)      (!(s) || (s)[0] == '\0')
 #define ARRAY_SIZE(a)   (sizeof(a)/sizeof((a)[0]))
+#ifndef MIN
 #define MIN(a,b)        ((a)<(b)?(a):(b))
+#endif
+#ifndef MAX
 #define MAX(a,b)        ((a)>(b)?(a):(b))
+#endif
 #define CLAMP(x,lo,hi)  MIN(MAX(x,lo),hi)
 
 /* GCC/Clang cleanup attribute helpers */
