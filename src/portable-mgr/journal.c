@@ -365,6 +365,11 @@ int journal_reader_fileno(JournalReader *r) {
         return fileno(r->f);
 }
 
+const char *journal_reader_path(JournalReader *r) {
+        if (!r) return NULL;
+        return r->current_file;
+}
+
 void journal_reader_clearerr(JournalReader *r) {
         if (r && r->f)
                 clearerr(r->f);

@@ -32,6 +32,7 @@ static uint64_t    opt_since   = 0;
 static uint64_t    opt_until   = USEC_INFINITY;
 static const char *opt_output  = "short";
 static bool        opt_quiet   = false;
+static bool        opt_verbose = false;
 static bool        opt_reverse = false;
 static bool        opt_no_pager= false;
 
@@ -227,6 +228,7 @@ static void print_usage(const char *argv0) {
 "  -o, --output=FORMAT    Output format: short (default), json, cat\n"
 "  --no-pager             Don't pipe output to pager\n"
 "  -q, --quiet            Suppress informational output\n"
+"  -V, --verbose          Print files being accessed\n"
 "\n"
 "Miscellaneous:\n"
 "  --disk-usage           Show disk usage of journal\n"
@@ -263,6 +265,7 @@ int main(int argc, char *argv[]) {
                 { "output",     required_argument, NULL, 'o' },
                 { "reverse",    no_argument,       NULL, 'r' },
                 { "quiet",      no_argument,       NULL, 'q' },
+                { "verbose",    no_argument,       NULL, 'V' },
                 { "no-pager",   no_argument,       NULL, 'P' },
                 { "disk-usage", no_argument,       NULL, 'D' },
                 { "user",       no_argument,       NULL, 'Z' },
@@ -273,7 +276,7 @@ int main(int argc, char *argv[]) {
         };
 
         int c;
-        while ((c = getopt_long(argc, argv, "u:fn:p:o:rqh", opts, NULL)) != -1) {
+        while ((c = getopt_long(argc, argv, "u:fn:p:o:rqVh", opts, NULL)) != -1) {
                 switch (c) {
                 case 'u': {
                         /* Append .service if no unit type suffix, matching systemctl behaviour */
@@ -311,6 +314,7 @@ int main(int argc, char *argv[]) {
                 case 'o': opt_output     = optarg; break;
                 case 'r': opt_reverse    = true;   break;
                 case 'q': opt_quiet      = true;   break;
+                case 'V': opt_verbose    = true;   break;
                 case 'P': opt_no_pager   = true;   break;
                 case 'D': opt_disk_usage = true;   break;
                 case 'Z': case 'Y': break;
@@ -365,6 +369,9 @@ int main(int argc, char *argv[]) {
                         fprintf(stderr, "No journal files found in %s\n", jdir);
                 return 0;
         }
+        if (opt_verbose)
+                fprintf(stderr, "journalctl: reading %s\n",
+                        opt_unit ? journal_reader_path(r) : jdir);
 
         /* Seek if requested */
         bool at_journal_begin = false;

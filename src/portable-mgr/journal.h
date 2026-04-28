@@ -56,6 +56,8 @@ void journal_reader_close(JournalReader *r);
 int  journal_reader_next(JournalReader *r, JournalEntry *ret);
 /* Return underlying fd for polling (-1 if not available) */
 int  journal_reader_fileno(JournalReader *r);
+/* Return path of the file currently being read */
+const char *journal_reader_path(JournalReader *r);
 /* Clear EOF/error flag so new data appended to the file can be read */
 void journal_reader_clearerr(JournalReader *r);
 /* Seek to entries after this realtime timestamp (usec) */

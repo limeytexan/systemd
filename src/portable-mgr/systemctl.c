@@ -34,6 +34,7 @@
 #include "journal.h"
 
 static bool opt_quiet    = false;
+static bool opt_verbose  = false;
 static bool opt_no_pager = false;
 static bool opt_json     = false;
 static bool opt_no_block = false;
@@ -162,6 +163,8 @@ static bool json_get_bool(const char *json, const char *key) {
 
 static int call_daemon(const char *request, char *response, size_t resp_sz) {
         _cleanup_free_ char *sock = ipc_socket_path();
+        if (opt_verbose)
+                fprintf(stderr, "systemctl: connecting to %s\n", sock);
         int r = ipc_client_call(sock, request, response, resp_sz);
         if (r < 0) {
                 if (r == -ENOENT || r == -ECONNREFUSED) {
@@ -618,6 +621,8 @@ static int cmd_status(int argc, char *argv[]) {
                 /* Show last journal lines */
                 if (!opt_quiet && opt_lines > 0) {
                         _cleanup_free_ char *jdir = journal_dir();
+                        if (opt_verbose)
+                                fprintf(stderr, "systemctl: reading journal from %s/%s.journal\n", jdir, argv[i]);
                         JournalReader *jr = NULL;
                         if (journal_reader_open_unit(&jr, jdir, argv[i]) == 0 && jr) {
                                 journal_reader_seek_tail(jr, opt_lines);
@@ -1088,6 +1093,7 @@ static void print_usage(const char *argv0) {
 "\n"
 "Options:\n"
 "  -q, --quiet            Suppress informational output\n"
+"  -v, --verbose          Print files and sockets being accessed\n"
 "  --no-block             Don't wait for start/stop to complete\n"
 "  -p, --property=NAME    Show only this property (repeatable, for show)\n"
 "  --no-pager             Don't pipe output to pager\n"
@@ -1101,6 +1107,7 @@ static void print_usage(const char *argv0) {
 int main(int argc, char *argv[]) {
         static const struct option opts[] = {
                 { "quiet",      no_argument,       NULL, 'q' },
+                { "verbose",    no_argument,       NULL, 'v' },
                 { "no-pager",   no_argument,       NULL, 'P' },
                 { "no-block",   no_argument,       NULL, 'b' },
                 { "output",     required_argument, NULL, 'o' },
@@ -1115,9 +1122,10 @@ int main(int argc, char *argv[]) {
         };
 
         int c;
-        while ((c = getopt_long(argc, argv, "qbn:p:hH:us", opts, NULL)) != -1) {
+        while ((c = getopt_long(argc, argv, "qvbn:p:hH:us", opts, NULL)) != -1) {
                 switch (c) {
                 case 'q': opt_quiet    = true; break;
+                case 'v': opt_verbose  = true; break;
                 case 'P': opt_no_pager = true; break;
                 case 'b': opt_no_block = true; break;
                 case 'o':
