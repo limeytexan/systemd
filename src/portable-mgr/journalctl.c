@@ -368,7 +368,7 @@ int main(int argc, char *argv[]) {
         /* Seek if requested */
         if (opt_since > 0)
                 journal_reader_seek_realtime(r, opt_since);
-        else if (!opt_follow && opt_lines < INT_MAX && opt_lines > 0)
+        else if (opt_lines < INT_MAX && opt_lines > 0)
                 journal_reader_seek_tail(r, opt_lines);
 
         if (opt_follow) {
