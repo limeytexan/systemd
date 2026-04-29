@@ -53,6 +53,9 @@ static inline int psm_pipe2(int pipefd[2], int flags) {
 /* ---- Version ---- */
 #define PSM_VERSION "0.1"
 
+/* ---- Time type (matches systemd's usec_t = uint64_t) ---- */
+typedef uint64_t usec_t;
+
 /* ---- Limits ---- */
 #define PSM_MAX_UNITS           512
 #define PSM_MAX_EXEC_ARGS        64

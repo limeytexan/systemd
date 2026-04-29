@@ -3,9 +3,13 @@
 
 #include <dirent.h>
 #include <grp.h>
+#include <inttypes.h>
 #include <pwd.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
+#ifdef __APPLE__
+#  include <sys/sysctl.h>
+#endif
 #include "manager.h"
 
 /* Default timeouts */
@@ -18,6 +22,245 @@ static void unit_process_exited(EventLoop *el, pid_t pid, int status, void *user
 static void unit_restart_timer_fired(EventLoop *el, uint64_t id, void *userdata);
 static int  unit_start_service(Unit *u);
 static void unit_set_state(Unit *u, UnitActiveState state, const char *msg);
+static void timer_fired(EventLoop *el, uint64_t id, void *userdata);
+static int  timer_arm(Unit *u);
+static void timer_disarm(Unit *u);
+
+/* ---- Timer helpers ---- */
+
+/* Return realtime usec of system boot (Linux: /proc/stat btime; macOS: kern.boottime). */
+static uint64_t system_boot_usec(void) {
+#if defined(__linux__)
+        FILE *f = fopen("/proc/stat", "r");
+        if (!f) return 0;
+        char line[128];
+        while (fgets(line, sizeof(line), f)) {
+                if (strprefix(line, "btime ")) {
+                        fclose(f);
+                        return strtoull(line + 6, NULL, 10) * USEC_PER_SEC;
+                }
+        }
+        fclose(f);
+        return 0;
+#elif defined(__APPLE__)
+        struct timeval tv;
+        size_t len = sizeof(tv);
+        int mib[] = { CTL_KERN, KERN_BOOTTIME };
+        if (sysctl(mib, 2, &tv, &len, NULL, 0) < 0) return 0;
+        return (uint64_t)tv.tv_sec * USEC_PER_SEC + (uint64_t)tv.tv_usec;
+#else
+        return 0;
+#endif
+}
+
+/* Path where we persist the last trigger timestamp for Persistent= timers. */
+static char *timer_stamp_path(Unit *u) {
+        _cleanup_free_ char *run = psm_runtime_dir();
+        if (!run) return NULL;
+        char *path = NULL;
+        if (asprintf(&path, "%s/timers/%s.stamp", run, u->name) < 0) return NULL;
+        return path;
+}
+
+static uint64_t timer_read_stamp(Unit *u) {
+        _cleanup_free_ char *path = timer_stamp_path(u);
+        if (!path) return 0;
+        FILE *f = fopen(path, "r");
+        if (!f) return 0;
+        uint64_t v = 0;
+        int _unused __attribute__((unused)) = fscanf(f, "%"SCNu64, &v);
+        fclose(f);
+        return v;
+}
+
+static void timer_write_stamp(Unit *u, uint64_t usec) {
+        _cleanup_free_ char *path = timer_stamp_path(u);
+        if (!path) return;
+
+        /* Ensure parent directory exists */
+        char *slash = strrchr(path, '/');
+        if (slash) {
+                *slash = '\0';
+                (void)mkdir(path, 0700);
+                *slash = '/';
+        }
+
+        FILE *f = fopen(path, "w");
+        if (!f) return;
+        fprintf(f, "%"PRIu64"\n", usec);
+        fclose(f);
+}
+
+/* Derive the associated service name for a timer unit: "foo.timer" → "foo.service".
+ * Respects the Unit= override in [Timer]. Result is heap-allocated. */
+static char *timer_service_name(Unit *u) {
+        if (u->config && u->config->timer.unit)
+                return strdup(u->config->timer.unit);
+
+        /* Strip ".timer" suffix and append ".service" */
+        size_t nlen = strlen(u->name);
+        const char *suf = ".timer";
+        size_t suflen = strlen(suf);
+        if (nlen > suflen && memcmp(u->name + nlen - suflen, suf, suflen) == 0) {
+                char *svc = malloc(nlen - suflen + strlen(".service") + 1);
+                if (!svc) return NULL;
+                memcpy(svc, u->name, nlen - suflen);
+                strcpy(svc + nlen - suflen, ".service");
+                return svc;
+        }
+        return strdup(u->name);
+}
+
+/* Compute the next fire time (realtime usec) for timer unit u, considering all
+ * TimerValues.  after_usec is the floor — we want the earliest time > after_usec.
+ * Returns USEC_INFINITY if the timer should not fire. */
+static uint64_t timer_next_usec(Unit *u, uint64_t after_usec) {
+        if (!u->config || u->config->timer.n_values == 0)
+                return USEC_INFINITY;
+
+        uint64_t boot   = system_boot_usec();
+        uint64_t now_rt = now_usec();
+        uint64_t best   = USEC_INFINITY;
+
+        for (int i = 0; i < u->config->timer.n_values; i++) {
+                TimerValue *tv = &u->config->timer.values[i];
+                uint64_t next = USEC_INFINITY;
+
+                switch (tv->base) {
+                case TIMER_CALENDAR: {
+                        usec_t n = 0;
+                        if (calendar_spec_next_usec(tv->calendar_spec, (usec_t)after_usec, &n) >= 0)
+                                next = (uint64_t)n;
+                        break;
+                }
+                case TIMER_BOOT:
+                        next = boot > 0 ? boot + tv->value : USEC_INFINITY;
+                        break;
+                case TIMER_ACTIVE:
+                case TIMER_STARTUP:
+                        next = u->activate_usec > 0 ? u->activate_usec + tv->value : USEC_INFINITY;
+                        break;
+                case TIMER_UNIT_ACTIVE: {
+                        Unit *svc = u->timer_service ? manager_find_unit(u->manager, u->timer_service) : NULL;
+                        next = (svc && svc->active_enter_usec > 0)
+                                ? svc->active_enter_usec + tv->value : USEC_INFINITY;
+                        break;
+                }
+                case TIMER_UNIT_INACTIVE: {
+                        Unit *svc = u->timer_service ? manager_find_unit(u->manager, u->timer_service) : NULL;
+                        next = (svc && svc->inactive_enter_usec > 0)
+                                ? svc->inactive_enter_usec + tv->value : USEC_INFINITY;
+                        break;
+                }
+                default:
+                        break;
+                }
+
+                /* For non-calendar one-shots: if we're past the target, fire at now_rt
+                 * (catches up once); persistent logic outside this function handles
+                 * whether we should catch up at all. */
+                if (next != USEC_INFINITY && next <= after_usec) {
+                        if (tv->base != TIMER_CALENDAR)
+                                next = now_rt; /* fire now */
+                        else
+                                continue; /* calendar already searched forward */
+                }
+
+                if (next < best)
+                        best = next;
+        }
+
+        return best;
+}
+
+static void timer_fired(EventLoop *el, uint64_t id, void *userdata) {
+        Unit *u = userdata;
+        (void)el; (void)id;
+
+        u->timer_event_id = 0;
+
+        uint64_t trigger = now_usec();
+        u->last_trigger_usec = trigger;
+
+        if (u->config && u->config->timer.persistent)
+                timer_write_stamp(u, trigger);
+
+        /* Activate the associated service */
+        if (u->timer_service) {
+                char errbuf[256] = "";
+                int r = manager_start_unit(u->manager, u->timer_service, errbuf, sizeof(errbuf));
+                if (r < 0)
+                        log_warning_unit(u->name, "Failed to start %s: %s",
+                                u->timer_service, errbuf[0] ? errbuf : strerror(-r));
+        }
+
+        /* Re-arm for the next occurrence */
+        timer_arm(u);
+}
+
+static void timer_disarm(Unit *u) {
+        if (u->timer_event_id) {
+                event_loop_cancel_timer(u->manager->event, u->timer_event_id);
+                u->timer_event_id = 0;
+        }
+}
+
+static int timer_arm(Unit *u) {
+        timer_disarm(u);
+
+        uint64_t base = u->last_trigger_usec > 0 ? u->last_trigger_usec : now_usec();
+        uint64_t next = timer_next_usec(u, base);
+
+        if (next == USEC_INFINITY) {
+                log_debug_unit(u->name, "Timer has no future trigger; not arming");
+                return 0;
+        }
+
+        /* Apply optional random delay (jitter) */
+        if (u->config && u->config->timer.randomized_delay_usec > 0) {
+                uint64_t jitter = (uint64_t)rand() % u->config->timer.randomized_delay_usec;
+                if (next + jitter > next) /* overflow guard */
+                        next += jitter;
+        }
+
+        uint64_t now_rt = now_usec();
+        uint64_t delay  = (next > now_rt) ? (next - now_rt) : 0;
+
+        int r = event_loop_add_timer(u->manager->event, delay, timer_fired, u, &u->timer_event_id);
+        if (r < 0) {
+                log_warning_unit(u->name, "Failed to arm timer: %s", strerror(-r));
+                return r;
+        }
+
+        log_debug_unit(u->name, "Timer armed: fires in %us", (unsigned)(delay / USEC_PER_SEC));
+        return 0;
+}
+
+/* Activate a timer unit: record activation time, load persistent stamp,
+ * compute and arm first fire. */
+static int unit_start_timer(Unit *u) {
+        if (!u->config || u->config->timer.n_values == 0) {
+                log_warning_unit(u->name, "Timer unit has no On*= trigger; doing nothing");
+                unit_set_state(u, UNIT_ACTIVE, "waiting");
+                return 0;
+        }
+
+        u->activate_usec = now_usec();
+
+        /* Ensure the timer_service name is resolved */
+        if (!u->timer_service)
+                u->timer_service = timer_service_name(u);
+
+        /* Read persistent stamp; if timer would have fired while we were down, fire now */
+        if (u->config->timer.persistent && u->last_trigger_usec == 0) {
+                uint64_t stamp = timer_read_stamp(u);
+                if (stamp > 0)
+                        u->last_trigger_usec = stamp;
+        }
+
+        unit_set_state(u, UNIT_ACTIVE, "waiting");
+        return timer_arm(u);
+}
 
 /* ---- Unit helpers ---- */
 
@@ -46,6 +289,7 @@ static void unit_free(Unit *u) {
         }
         free(u->name);
         free(u->state_msg);
+        free(u->timer_service);
         unit_file_config_free(u->config);
         /* Dependency arrays hold borrowed pointers; don't free elements */
         free(u->deps_after);
@@ -898,6 +1142,15 @@ int manager_start_unit(Manager *m, const char *name, char *errbuf, size_t errsz)
                 return 0;
         }
 
+        /* For timers, arm the event-loop timer instead of spawning a process */
+        if (u->type == UNIT_TIMER) {
+                u->pinned = true;
+                r = unit_start_timer(u);
+                if (r < 0 && errbuf)
+                        snprintf(errbuf, errsz, "Failed to arm timer '%s': %s", name, strerror(-r));
+                return r;
+        }
+
         u->pinned = true;
         r = unit_start_service(u);
         if (r < 0 && errbuf)
@@ -919,11 +1172,13 @@ int manager_stop_unit(Manager *m, const char *name, char *errbuf, size_t errsz) 
         u->stopping = true;
         u->pinned   = false;
 
-        /* Cancel any pending restart */
+        /* Cancel any pending restart or timer arm */
         if (u->restart_timer_id) {
                 event_loop_cancel_timer(m->event, u->restart_timer_id);
                 u->restart_timer_id = 0;
         }
+        if (u->type == UNIT_TIMER)
+                timer_disarm(u);
 
         unit_set_state(u, UNIT_DEACTIVATING, "stopping");
 
@@ -1350,6 +1605,18 @@ int manager_run(Manager *m) {
                                 log_warning("Failed to auto-start %s: %s", de->d_name, errbuf);
                 }
                 closedir(d);
+        }
+
+        /* Arm timer units that were loaded but not explicitly wanted by default.target
+         * (e.g. units with [Install] WantedBy=timers.target or auto-loaded timers). */
+        for (int i = 0; i < m->n_units; i++) {
+                Unit *u = m->units[i];
+                if (u->type != UNIT_TIMER) continue;
+                if (u->state == UNIT_ACTIVE) continue; /* already started above */
+                if (!u->enabled) continue;
+                char errbuf[256] = "";
+                if (manager_start_unit(m, u->name, errbuf, sizeof(errbuf)) < 0)
+                        log_warning("Failed to auto-start timer %s: %s", u->name, errbuf);
         }
 
         log_info("Portable service manager started");

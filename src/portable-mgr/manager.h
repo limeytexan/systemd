@@ -28,6 +28,12 @@ struct Unit {
         int             restart_count;    /* How many times restarted */
         uint64_t        restart_timer_id; /* Event loop timer for restart delay */
 
+        /* Timer state (for UNIT_TIMER) */
+        uint64_t        timer_event_id;   /* Event loop timer ID (0 = not armed) */
+        uint64_t        last_trigger_usec;/* Last trigger realtime usec (0 = never) */
+        uint64_t        activate_usec;    /* When this timer unit was activated */
+        char           *timer_service;    /* Associated service name (heap-allocated) */
+
         /* Dependency tracking */
         Unit          **deps_after;       /* Wait for these before starting */
         int             n_deps_after;

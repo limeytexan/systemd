@@ -29,6 +29,7 @@ endif
 psm_common_sources = files(
   'psm-util.c',
   'event.c',
+  'calendarspec.c',   # vendored from src/shared/; provides OnCalendar= parsing
   'parse-unit.c',
   'journal.c',
   'ipc.c',

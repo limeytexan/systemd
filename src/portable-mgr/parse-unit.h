@@ -3,6 +3,7 @@
 #pragma once
 
 #include "psm.h"
+#include "calendarspec.h"
 
 /* ---- Parsed [Unit] section ---- */
 typedef struct UnitSection {
@@ -60,6 +61,36 @@ typedef struct ServiceSection {
         bool            private_network;
 } ServiceSection;
 
+/* ---- Parsed [Timer] section ---- */
+
+typedef enum TimerBase {
+        TIMER_ACTIVE,         /* OnActiveSec=   — relative to timer unit activation */
+        TIMER_BOOT,           /* OnBootSec=     — relative to system boot */
+        TIMER_STARTUP,        /* OnStartupSec=  — relative to service manager start */
+        TIMER_UNIT_ACTIVE,    /* OnUnitActiveSec=   — relative to service last-active */
+        TIMER_UNIT_INACTIVE,  /* OnUnitInactiveSec= — relative to service last-inactive */
+        TIMER_CALENDAR,       /* OnCalendar=    — absolute calendar expression */
+        _TIMER_BASE_MAX,
+} TimerBase;
+
+#define PSM_MAX_TIMER_VALUES 16
+
+typedef struct TimerValue {
+        TimerBase    base;
+        usec_t       value;          /* usec offset; used for all *Sec= bases */
+        CalendarSpec *calendar_spec; /* owned; only set for TIMER_CALENDAR */
+} TimerValue;
+
+typedef struct TimerSection {
+        TimerValue values[PSM_MAX_TIMER_VALUES];
+        int        n_values;
+        char      *unit;                   /* target service; NULL → basename + .service */
+        bool       persistent;             /* remember last trigger across restarts */
+        bool       remain_after_elapse;
+        usec_t     accuracy_usec;          /* permitted jitter; default 60s */
+        usec_t     randomized_delay_usec;  /* additional random delay */
+} TimerSection;
+
 /* ---- Parsed [Install] section ---- */
 typedef struct InstallSection {
         char **wanted_by;       /* NULL-terminated */
@@ -75,6 +106,7 @@ typedef struct UnitFileConfig {
         char          *path;    /* full path to unit file */
         UnitSection    unit;
         ServiceSection service;
+        TimerSection   timer;
         InstallSection install;
 } UnitFileConfig;
 

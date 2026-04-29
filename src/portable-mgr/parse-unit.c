@@ -102,33 +102,84 @@ const char *unit_active_state_to_string(UnitActiveState s) {
 
 /* ---- Parsing helpers ---- */
 
-/* Parse a time value like "5s", "500ms", "1min", "2h"; returns usec or USEC_INFINITY on error */
-static uint64_t parse_time_usec(const char *s) {
+/* Parse a compound time value like "5s", "1h30min", "2d"; returns usec or USEC_INFINITY.
+ * Supports "infinity" and all units systemd's parse_sec() accepts.
+ * Multiple terms are summed: "1h 30min" or "1h30min" both equal 90 min. */
+static usec_t parse_time_usec(const char *s) {
         if (!s || !*s) return USEC_INFINITY;
+        while (*s == ' ' || *s == '\t') s++;
+        if (streq(s, "infinity")) return USEC_INFINITY;
 
-        /* bare number is seconds */
-        char *end;
-        double v = strtod(s, &end);
-        if (end == s) return USEC_INFINITY;
+        usec_t total = 0;
+        bool any = false;
+        const char *p = s;
 
-        end = (char*)strstrip(end);
-        uint64_t mult;
-        if (*end == '\0' || streq(end, "s") || streq(end, "sec") || streq(end, "second") || streq(end, "seconds"))
-                mult = USEC_PER_SEC;
-        else if (streq(end, "ms") || streq(end, "msec") || streq(end, "millisecond") || streq(end, "milliseconds"))
-                mult = USEC_PER_MSEC;
-        else if (streq(end, "us") || streq(end, "usec") || streq(end, "microsecond") || streq(end, "microseconds"))
-                mult = 1;
-        else if (streq(end, "m") || streq(end, "min") || streq(end, "minute") || streq(end, "minutes"))
-                mult = 60 * USEC_PER_SEC;
-        else if (streq(end, "h") || streq(end, "hr") || streq(end, "hour") || streq(end, "hours"))
-                mult = 3600 * USEC_PER_SEC;
-        else if (streq(end, "d") || streq(end, "day") || streq(end, "days"))
-                mult = 86400 * USEC_PER_SEC;
-        else
-                return USEC_INFINITY;
+        while (*p) {
+                while (*p == ' ' || *p == '\t') p++;
+                if (!*p) break;
 
-        return (uint64_t)(v * (double)mult);
+                char *end;
+                double v = strtod(p, &end);
+                if (end == p) return USEC_INFINITY;
+                any = true;
+
+                while (*end == ' ' || *end == '\t') end++;
+
+                /* Match longest unit suffix first; require non-alpha after to avoid
+                 * "min" matching "minutes" partially. */
+#define UNIT(str, mult_val) \
+        if (strprefix(end, str) && !isalpha((unsigned char)end[sizeof(str)-1])) { \
+                total += (usec_t)(v * (double)(mult_val)); \
+                end += sizeof(str) - 1; \
+                p = end; continue; \
+        }
+                UNIT("microseconds", 1ULL)
+                UNIT("microsecond",  1ULL)
+                UNIT("milliseconds", USEC_PER_MSEC)
+                UNIT("millisecond",  USEC_PER_MSEC)
+                UNIT("msec",         USEC_PER_MSEC)
+                UNIT("seconds",      USEC_PER_SEC)
+                UNIT("second",       USEC_PER_SEC)
+                UNIT("minutes",      60ULL * USEC_PER_SEC)
+                UNIT("minute",       60ULL * USEC_PER_SEC)
+                UNIT("months",       2629800ULL * USEC_PER_SEC)
+                UNIT("month",        2629800ULL * USEC_PER_SEC)
+                UNIT("hours",        3600ULL * USEC_PER_SEC)
+                UNIT("hour",         3600ULL * USEC_PER_SEC)
+                UNIT("days",         86400ULL * USEC_PER_SEC)
+                UNIT("day",          86400ULL * USEC_PER_SEC)
+                UNIT("weeks",        604800ULL * USEC_PER_SEC)
+                UNIT("week",         604800ULL * USEC_PER_SEC)
+                UNIT("years",        31557600ULL * USEC_PER_SEC)
+                UNIT("year",         31557600ULL * USEC_PER_SEC)
+                /* Short forms: must check multi-char before single-char */
+                UNIT("usec", 1ULL)
+                UNIT("ms",   USEC_PER_MSEC)
+                UNIT("sec",  USEC_PER_SEC)
+                UNIT("min",  60ULL * USEC_PER_SEC)
+                UNIT("hr",   3600ULL * USEC_PER_SEC)
+                UNIT("us",   1ULL)
+                /* Single-character units */
+                if (*end == 's' && !isalpha((unsigned char)end[1]))
+                        { total += (usec_t)(v * USEC_PER_SEC); end++; p = end; continue; }
+                if (*end == 'm' && !isalpha((unsigned char)end[1]))
+                        { total += (usec_t)(v * 60ULL * USEC_PER_SEC); end++; p = end; continue; }
+                if (*end == 'h' && !isalpha((unsigned char)end[1]))
+                        { total += (usec_t)(v * 3600ULL * USEC_PER_SEC); end++; p = end; continue; }
+                if (*end == 'd' && !isalpha((unsigned char)end[1]))
+                        { total += (usec_t)(v * 86400ULL * USEC_PER_SEC); end++; p = end; continue; }
+                if (*end == 'w' && !isalpha((unsigned char)end[1]))
+                        { total += (usec_t)(v * 604800ULL * USEC_PER_SEC); end++; p = end; continue; }
+                if (*end == 'y' && !isalpha((unsigned char)end[1]))
+                        { total += (usec_t)(v * 31557600ULL * USEC_PER_SEC); end++; p = end; continue; }
+#undef UNIT
+                /* No recognisable unit: treat as seconds if at end-of-string */
+                if (*end == '\0' || *end == ' ' || *end == '\t')
+                        { total += (usec_t)(v * USEC_PER_SEC); p = end; continue; }
+                return USEC_INFINITY; /* unrecognised suffix */
+        }
+
+        return any ? total : USEC_INFINITY;
 }
 
 /* Parse boolean: "yes"/"true"/"1" → true; "no"/"false"/"0" → false */
@@ -310,6 +361,63 @@ static int parse_service_key(ServiceSection *s, const char *key, const char *val
         return 0;
 }
 
+static int parse_timer_key(TimerSection *t, const char *key, const char *val) {
+        /* Relative-offset variants — each adds a TimerValue */
+        TimerBase base = _TIMER_BASE_MAX;
+        if      (streq(key, "OnActiveSec"))        base = TIMER_ACTIVE;
+        else if (streq(key, "OnBootSec"))          base = TIMER_BOOT;
+        else if (streq(key, "OnStartupSec"))       base = TIMER_STARTUP;
+        else if (streq(key, "OnUnitActiveSec"))    base = TIMER_UNIT_ACTIVE;
+        else if (streq(key, "OnUnitInactiveSec"))  base = TIMER_UNIT_INACTIVE;
+
+        if (base != _TIMER_BASE_MAX) {
+                if (t->n_values >= PSM_MAX_TIMER_VALUES) return 0;
+                usec_t v = parse_time_usec(val);
+                if (v == USEC_INFINITY) {
+                        log_warning("Timer: invalid duration for %s=%s", key, val);
+                        return 0;
+                }
+                TimerValue *tv = &t->values[t->n_values++];
+                tv->base          = base;
+                tv->value         = v;
+                tv->calendar_spec = NULL;
+                return 0;
+        }
+
+        if (streq(key, "OnCalendar")) {
+                if (t->n_values >= PSM_MAX_TIMER_VALUES) return 0;
+                CalendarSpec *spec = NULL;
+                int r = calendar_spec_from_string(val, &spec);
+                if (r < 0) {
+                        log_warning("Timer: invalid OnCalendar= expression '%s': %s", val, strerror(-r));
+                        return 0;
+                }
+                TimerValue *tv = &t->values[t->n_values++];
+                tv->base          = TIMER_CALENDAR;
+                tv->value         = 0;
+                tv->calendar_spec = spec;
+                return 0;
+        }
+
+        if (streq(key, "Unit"))
+                return strdup_assign(&t->unit, val);
+        if (streq(key, "Persistent"))
+                return parse_bool(val, &t->persistent);
+        if (streq(key, "RemainAfterElapse"))
+                return parse_bool(val, &t->remain_after_elapse);
+        if (streq(key, "AccuracySec")) {
+                usec_t v = parse_time_usec(val);
+                if (v != USEC_INFINITY) t->accuracy_usec = v;
+                return 0;
+        }
+        if (streq(key, "RandomizedDelaySec")) {
+                usec_t v = parse_time_usec(val);
+                if (v != USEC_INFINITY) t->randomized_delay_usec = v;
+                return 0;
+        }
+        return 0; /* silently ignore unknown [Timer] keys */
+}
+
 static int parse_install_key(InstallSection *inst, const char *key, const char *val) {
         if (streq(key, "WantedBy"))
                 return strv_append_words(&inst->wanted_by, val);
@@ -421,9 +529,11 @@ int parse_unit_file(const char *path, UnitFileConfig **ret) {
                         r = parse_unit_key(&c->unit, key, val);
                 else if (streq(section, "Service"))
                         r = parse_service_key(&c->service, key, val);
+                else if (streq(section, "Timer"))
+                        r = parse_timer_key(&c->timer, key, val);
                 else if (streq(section, "Install"))
                         r = parse_install_key(&c->install, key, val);
-                /* Other sections (Socket, Timer, etc.) silently ignored for now */
+                /* Socket and other sections silently ignored */
 
                 if (r < 0)
                         log_warning("parse-unit: %s:%d: failed to parse %s=%s: %s",
@@ -481,6 +591,11 @@ void unit_file_config_free(UnitFileConfig *c) {
         free(c->service.pid_file);
         free(c->service.runtime_directory);
         free(c->service.notify_access);
+
+        /* [Timer] */
+        for (int i = 0; i < c->timer.n_values; i++)
+                calendar_spec_free(c->timer.values[i].calendar_spec);
+        free(c->timer.unit);
 
         /* [Install] */
         strv_free(c->install.wanted_by);
